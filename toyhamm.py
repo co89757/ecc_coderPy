@@ -543,7 +543,7 @@ h128 = numpy.concatenate((numpy.transpose(p128), numpy.eye(8, dtype=int)), axis 
 
 g256 = numpy.concatenate((numpy.eye(256,dtype=int), p256), axis = 1) 
 h256 = numpy.concatenate((numpy.transpose(p256), numpy.eye(9, dtype=int)), axis = 1)   
-
+#generator matrix and parity matrix lookup table 
 gentable = {16:g16,32:g32, 64:g64, 128:g128, 256:g256} 
 partable = {16:h16, 32:h32, 64:h64, 128:h128, 256:h256} 
  
@@ -560,9 +560,9 @@ def createMessage(length):
         msg.append(letter)
     return numpy.array(msg, dtype = int)
  
-def encode(m, g): 
+def encode(msg, g): 
     "encoder by Generator matrix g.  m * G = c , works on SEC part ; Return a numpy array "
-    enc = numpy.dot(m, g)%2
+    enc = numpy.dot(msg, g)%2
     return enc
  
 def syndrome(received, h):
@@ -570,20 +570,20 @@ def syndrome(received, h):
     synd = numpy.dot(h, received)%2
     return synd
  
-def noise(m, error, bit):
-    "error is error rate, bit is total #corrupted bits,m is the input vector; insert noise in the message; out: a numpy array"
-    noisy_msg = numpy.copy(m)
+def noise(vin, ber, n_err):
+    "ber is error rate, bit is total #corrupted bits,m is the input vector; insert noise in the message; out: a numpy array"
+    noisy_msg = numpy.copy(vin)
     cont = 0
     for i in range(len(noisy_msg)):
         e = random.random() # return a random number in [0,1)
-        if e <= error:
+        if e < ber:
             if noisy_msg[i] == 0:
                 noisy_msg[i] = 1
                 cont +=1
             else:
                 noisy_msg[i] = 0
                 cont +=1
-            if cont == bit:  # bit is  #corrupted bits
+            if cont == n_err:  # bit is  #corrupted bits
                 break
     return noisy_msg #return noise mask 
  
@@ -605,27 +605,27 @@ def findError(synd, H_matrix):
     else:
         return 1000 # beyond correction capability        
  
-def correct(noisy, n):
+def correct(noisy, i):
     "flip bits at n-th position. return : a numpy.array "
     # copy the received vector first 
     recv = numpy.copy(noisy)
-    if recv[n] == 0:
-        recv[n] = 1
-    else:# recv[n] == 1:
-        recv[n] = 0
-    #print recv
+    recv[i] = int(not(recv[i]))  # flip the bit at location i 
+   
     return recv
  
-def hamming(length, n, error, bit):
+def eHamming(info_length, erate, maxerr, ITEARTION=5):
     # g =  numpy.array([[1, 0, 0, 0, 0, 1, 1],[0, 1, 0, 0, 1, 0, 1],[0, 0, 1, 0, 1, 1, 0],[0, 0, 0, 1, 1, 1, 1]])
     # h = numpy.array([[0, 0, 0, 1, 1, 1, 1],[0, 1, 1, 0, 0, 1, 1],[1, 0, 1, 0, 1, 0, 1]]) # colin. remove a extra , comma
-    assert length in (16,32,64,128,256) 
-    g = gentable[length]
-    h = partable[length] 
+    assert info_length in (16,32,64,128,256) 
+    g = gentable[info_length]
+    h = partable[info_length] 
     # corrected = 0
     # uncorrected = 0
-    for i in range(n): # n incoming received message repetitions 
-        msg = createMessage(length) # generate a random information vector u(x)
+    corr_cnt = 0
+    noerr_cnt = 0
+    fail_cnt = 0
+    for i in range(ITEARTION): # n incoming received message repetitions 
+        msg = createMessage(info_length) # generate a random information vector u(x)
         enc = encode(msg, g) 
 
         # ------- check parity right after encoder : parity before corruption ----------
@@ -634,13 +634,14 @@ def hamming(length, n, error, bit):
         print "encoded msg: ", enc
 
         # ------introduce corruption --------------
-        noisy = noise(enc, error, bit)
+        noisy = noise(enc, erate, maxerr)
 
         #------check parity after corruption --------
         op_after = list(noisy).count(1) % 2 
         # --------DED_flag denotes the status of DED part, 1 means detected parity mismatch -- --
         DED_flag = op_before ^ op_after 
-        print 'received mesage: ', noisy," parity(after pollution): ", op_after 
+        print 'received mesage: ', noisy," parity(after pollution): ", op_after
+
         # -----compute syndrome , set the SEC flag ------------------------------
         syndromes = syndrome(noisy, h)
         print 'syndrome vector: ', syndromes
@@ -656,20 +657,32 @@ def hamming(length, n, error, bit):
         # ------------------------------------------------------------------------------------
         if ERROR_STATUS_CODE == (0,0):
             print 'Clean! No errors !'
+            noerr_cnt += 1
         elif ERROR_STATUS_CODE == (1,1):
             corrected_vector = correct(noisy, error_index)
             print 'corrected vector : ', corrected_vector
             if numpy.array_equal(corrected_vector, enc):
                 print 'correction success!!!'
+                corr_cnt += 1
             else:
                 print 'mis-correction...'
+                fail_cnt += 1 
         elif ERROR_STATUS_CODE == (1,0):
             print "2 errors detected! Unable to correct! " 
         else:
             print "The impossible occurs, something wrong! "
+        print '-----------------------------'
 
+    print '================= \Summary\ ========================='
+    print 'word width = ', info_length, '; bit error rate = ',erate, '; max #error = ', maxerr 
+    print 'Total number of iterations: ', ITEARTION 
+    print 'Corrected : ', corr_cnt 
+    print 'No-error count: ',noerr_cnt 
+    print 'Mis-correction: ',fail_cnt 
+    if fail_cnt == 0 :
+        print 'all codes are properly handled !'
 
-        
+    
 
 
         # if error_index >= 0 and error_index < 1000:
@@ -690,10 +703,10 @@ if __name__ == '__main__':
         
     
     length = int(raw_input('word width [must be valid]: '))
-    n = int(raw_input('Repetitions: '))
+    n_iter = int(raw_input('Repetitions: '))
     ber = float(raw_input('bit error rate: '))
     nerr = int(raw_input('maximum number of errors: '))
-    hamming(length,n,ber, nerr)
+    eHamming(length,ber, nerr,n_iter) 
 
 
 
