@@ -87,10 +87,10 @@ def HamEncoder(wdsize, next_coroutine):
 		while True:
 			msg = (yield)
 			assert len(msg) == wdsize and isinstance(msg, list) # type check and length match  
-			msg = numpy.array(msg, dtype = int) # convert to np array 
+			msg_np = numpy.array(msg, dtype = int) # convert to np array 
 		 	g = hamm.gentable[wdsize]
-		 	enc = numpy.dot(msg, g) % 2
-		 	enc_list = enc.tolist() 
+		 	enc_np = numpy.dot(msg_np, g) % 2
+		 	enc_list = enc_np.tolist() 
 		 	op = enc_list.count(1) % 2 # compute overall parity bit 
 		 	enc_list.append(op) # append overall parity bits
 		 	# send a np array to next 
@@ -141,20 +141,16 @@ def Printer(ofile):
 	except GeneratorExit:
 		f.close()
 		print ' ====DONE===='
+	finally:
+		if not f.closed:
+			f.close() 
+		else:
+			pass 
 
 		
 
 
-# @coroutine
-# def Corruption(ber, n_err, next_coroutine):
-# 	try:
-# 		while True:
 
-# 			vin = (yield)
-# 			noisy = hamm.noise( vin, ber, n_err) # a np array 
-# 			next_coroutine.send(noisy.tolist()) # send a list  
-# 	except GeneratorExit:
-# 		raise next_coroutine.close() 
 
 
 
@@ -166,39 +162,47 @@ def BCHdecoder(wdsize,next_coroutine):
 	in: wdsize (word width)
 	out: corrected word , if fail ,then hands-off and return original data 
 	"""
-	noerr_count = 0 
+	# noerr_count = 0 
 	corr_count = 0 
 	fail_count = 0
-	total = 0
+	err_detected = 0 
 	m = wd2mTable[wdsize] 
 	n = 2*m + wdsize # code block length 
 	try:
 		while True:
 			recv = (yield)
-			total += 1
 			assert isinstance(recv, list) and len(recv) == n 
 			(s1,s3) = bch.syndrome(m, recv) 
 			if s1==0:
 				next_coroutine.send(recv[:wdsize]) # return original data for printing/writing 
-				noerr_count += 1
-				continue 
-			(A1,A2) = bch.errorLocator(m,s1,s3) 
-			errpol = bch.errorPoly( m, A1, A2) 
-			if errpol < 0:
-				# -------------decoding failure, return original data -------  
-				fail_count += 1  
-				next_coroutine.send(recv[:wdsize])
-				continue 
-			corr_vec = bch.correct(recv, errpol)
-			corr_count += 1  
-			assert isinstance(corr_vec, list) 
-			next_coroutine.send(corr_vec[:wdsize]) 
+				# noerr_count += 1
+				continue
+			else:
+				err_detected += 1  # syndrome non-zero --> error detected! 
+				(A1,A2) = bch.errorLocator(m,s1,s3) 
+				errpol = bch.errorPoly( m, A1, A2) 
+				if errpol < 0:
+					# -------------decoding failure, return original data -------  
+					fail_count += 1  
+					next_coroutine.send(recv[:wdsize])
+					continue 
+				corr_vec = bch.correct(recv, errpol)
+				corr_count += 1  
+				assert isinstance(corr_vec, list) 
+				next_coroutine.send(corr_vec[:wdsize]) 
 
 
 
 	except GeneratorExit:
 		next_coroutine.close()
 		# ---- write stat into log file ---- TODO 
+		with open('bchlog.txt','w') as f:
+			print >>f, '========= STATS ========='
+			print >>f, '# corrupted codewords: ', err_detected
+			print >>f, '# corrected codewords: ', corr_count 
+			print >>f, '# decoding failures :', fail_count 
+
+		
 
 
 @coroutine
@@ -209,39 +213,49 @@ def HamDecoder(wdsize, next_coroutine):
  	 """ 
  	r = wd2mTable[wdsize] + 1 # number of parity bits 
  	H = hamm.partable[wdsize] 
- 	noerr = 0 
+ 	corrupted = 0 
  	twoerr = 0
  	corrected = 0
- 	# total = 0
-
+ 	fatal = 0
  	try:
  		while True:
  			recv = (yield)
- 			# total += 1 
  			assert isinstance(recv, list) and len(recv) == r+wdsize  # received code validation
  			DED_flag = reduce(lambda x,y: x^y, recv )  # parity check 
  			recv_np = numpy.array(recv, dtype = int )  
- 			error_index = hamm.findError( hamm.syndrome(recv_np[:-1], H), H)
+ 			error_index = hamm.findError( hamm.syndrome(recv_np[:-1], H), H)  # if return 1000, it's beyond capability !!
  			SEC_flag = int(error_index >= 0)  # set SEC  flag. 
  			ERROR_STATUS_CODE = (SEC_flag, DED_flag) 
  			if ERROR_STATUS_CODE==(0,0):
- 			 	noerr += 1 
  			 	next_coroutine.send(recv[:wdsize]) 
- 			elif ERROR_STATUS_CODE == (1,1):
+ 			elif ERROR_STATUS_CODE == (1,1) and error_index != 1000:   # MAKE SURE IT'S 1 ERROR 
+ 				corrupted += 1 # detected a corrupt word , also corrects 
  				corr_np = hamm.correct(recv[:-1], error_index)
  				corr_vec = corr_np.tolist() 
  				corrected += 1 
  				next_coroutine.send(corr_vec) 
  			elif ERROR_STATUS_CODE == (1,0):
+ 				corrupted += 1  # detected a corrupt word , unable to correct 
  				twoerr += 1
  				next_coroutine.send(recv[:wdsize]) # detected 2 err, not correctable. send original data(list)  
- 			else:
- 				raise ValueError
+ 			else:  # 0,1 or error_index = 1000 && (1,1) [odd number of errors, beyond ]  #err >=3 
+ 				next_coroutine.send(recv[:wdsize])  # fatal error 
+ 				fatal += 1 
 
 
  	except GeneratorExit:
  		next_coroutine.close() 
  		# -----write stat log TODO ---
+ 		with open('SECDEDlog.txt','w') as f:
+ 			print >>f, '========= STATS ========='
+			print >>f, '# detected corrupted codewords: ', corrupted 
+			print >>f, '# attampted corrected codewords: ', corrected
+			print >>f, '# detected two-error detected/or even number of errors :', twoerr
+			print >>f, '# fatal-error codewords: ',fatal    
+	
+
+
+
 
 # ======================/ END OF DECODER /=========================
 
@@ -255,12 +269,13 @@ def ErrorGen(vdd, next_coroutine):
 	out: corrupted vector ; in list out list 
 	"""
 	ber = 0 if vdd > 0.85 else 6*(0.85-vdd)**6.14 
+	# flip = lambda x: x if random.random() < ber else int(not(x)) 
 	try:
 		while True:
 			vin = (yield)
 			assert isinstance(vin, list)
 			vin2 = copy.copy(vin)  
-			
+			# vin2 = map(flip, vin2) 
 			for i in xrange(len(vin2)):
 				if random.random() < ber:	
 					vin2[i] = int( not(vin2[i]) ) # flip bits 

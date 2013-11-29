@@ -14,6 +14,7 @@
 
 import numpy
 import random
+from itertools import izip 
 # import sys
 
 #parity matrix is in G=[I,P] so H=[P',I] 
@@ -566,7 +567,7 @@ def encode(msg, g):
     return enc
  
 def syndrome(received, h):
-    "syndrome calculation syn = r x H' or H x r' = syn' ,take np array, return a numpy array"
+    "syndrome calculation syn = r x H' or H x r' = syn' ,take np array,   return a numpy array"
     synd = numpy.dot(h, received)%2
     return synd
  
@@ -603,7 +604,7 @@ def findError(synd, H_matrix):
         else:
             continue 
     else:
-        return 1000 # beyond correction capability        
+        return 1000 # beyond correction capability   BUGGY !!! TO DEBUG      
  
 def correct(noisy, i):
     "flip bits at n-th position. return : a numpy.array "
@@ -624,6 +625,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
     corr_cnt = 0
     noerr_cnt = 0
     fail_cnt = 0
+    beyond = 0 
     for i in range(ITEARTION): # n incoming received message repetitions 
         msg = createMessage(info_length) # generate a random information vector u(x)
         enc = encode(msg, g) 
@@ -641,6 +643,9 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         # --------DED_flag denotes the status of DED part, 1 means detected parity mismatch -- --
         DED_flag = op_before ^ op_after 
         print 'received mesage: ', noisy," parity(after pollution): ", op_after
+        ep = [x^y for x,y in izip(noisy.tolist(),enc.tolist())] 
+        print 'error pattern: ',  ep 
+        print 'number of errors: ', sum(ep) 
 
         # -----compute syndrome , set the SEC flag ------------------------------
         syndromes = syndrome(noisy, h)
@@ -658,7 +663,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         if ERROR_STATUS_CODE == (0,0):
             print 'Clean! No errors !'
             noerr_cnt += 1
-        elif ERROR_STATUS_CODE == (1,1):
+        elif ERROR_STATUS_CODE == (1,1) and error_index != 1000:
             corrected_vector = correct(noisy, error_index)
             print 'corrected vector : ', corrected_vector
             if numpy.array_equal(corrected_vector, enc):
@@ -667,10 +672,13 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
             else:
                 print 'mis-correction...'
                 fail_cnt += 1 
+        elif ERROR_STATUS_CODE == (1,1) and error_index == 1000:
+            print 'odd number of errors, beyond capability! '
+            beyond += 1
         elif ERROR_STATUS_CODE == (1,0):
-            print "2 errors detected! Unable to correct! " 
-        else:
-            print "The impossible occurs, something wrong! " 
+            print "2 errors detected! Unable to correct! (or even number of errors >2) " 
+        else:  # error code is (0,1) odd number of error, but syndrome is zero 
+            print "The impossible occurs, something wrong! fatal " 
         print '-----------------------------'
 
     print '================= \Summary\ ========================='
@@ -679,6 +687,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
     print 'Corrected : ', corr_cnt 
     print 'No-error count: ',noerr_cnt 
     print 'Mis-correction: ',fail_cnt 
+    print 'beyond capability: ', beyond 
     if fail_cnt == 0 :
         print 'all codes are properly handled !'
 
