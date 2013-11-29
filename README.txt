@@ -30,3 +30,15 @@ Nov 25
 
 -) tested eHamming for all word width range
 *) check out CRC and 3-detection in BCH 
+
+Nov 26 
+-) devising means to read binary files for testing. use array module in Python. 
+use array('B') [read a byte each time] and array.fromfile(f,n) to form a list 
+
+*) how to write a list into binary file
+*) numpy/Scipy r/w files. numpy.tofile() check out numpy cookbook
+
+
+Nov 27 
+-) wrote pipeline (coroutines) encoder testbench with command line arguments 
+*) finish decoder testbench 

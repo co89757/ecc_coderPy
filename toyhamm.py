@@ -566,7 +566,7 @@ def encode(msg, g):
     return enc
  
 def syndrome(received, h):
-    "syndrome calculation syn = r x H' or H x r' = syn' , return a numpy array"
+    "syndrome calculation syn = r x H' or H x r' = syn' ,take np array, return a numpy array"
     synd = numpy.dot(h, received)%2
     return synd
  
@@ -629,7 +629,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         enc = encode(msg, g) 
 
         # ------- check parity right after encoder : parity before corruption ----------
-        op_before =  list(enc).count(1) % 2 
+        op_before =  enc.tolist().count(1) % 2 
         print "original message: ", msg, " parity: ",op_before 
         print "encoded msg: ", enc
 
@@ -637,7 +637,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         noisy = noise(enc, erate, maxerr)
 
         #------check parity after corruption --------
-        op_after = list(noisy).count(1) % 2 
+        op_after = noisy.tolist().count(1) % 2 
         # --------DED_flag denotes the status of DED part, 1 means detected parity mismatch -- --
         DED_flag = op_before ^ op_after 
         print 'received mesage: ', noisy," parity(after pollution): ", op_after
@@ -670,7 +670,7 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         elif ERROR_STATUS_CODE == (1,0):
             print "2 errors detected! Unable to correct! " 
         else:
-            print "The impossible occurs, something wrong! "
+            print "The impossible occurs, something wrong! " 
         print '-----------------------------'
 
     print '================= \Summary\ ========================='
