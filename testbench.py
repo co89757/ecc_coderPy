@@ -40,7 +40,7 @@ def bytearray2vec(a):
  
 
 wd2mTable = {16:5, 32:6, 64:7, 128:8, 256:9} 
- 
+# CLEAR 
 def Reader(file,wdsize, next_coroutine):
 # def Reader(file,wdsize): #debug 
 	""" input: file to read (file), word size (wdsize) , next_coroutine 
@@ -49,27 +49,31 @@ def Reader(file,wdsize, next_coroutine):
 	f = open(file,'rb')
 	# li = []  #debug 
 	try:
-		for x in xrange(2):
+		while True:
+			
 			a = bitarray() 
 			a.fromfile(f,n_bytes) 
-			a_vec = map(int, a.to01() ) 
+			a_list = map(int, a.to01() ) 
 			# a = array('B')	 
 			# a.fromfile(f, n_bytes) # grab a word each time 
-			# a_vec = bytearray2vec(a) 
-			assert len(a_vec)==wdsize  
-			# li.extend(a_vec) #debug 
-			next_coroutine.send(a_vec) 
+			# a_list = bytearray2vec(a) 
+			assert len(a_list)==wdsize  
+			# li.extend(a_list) #debug 
+			next_coroutine.send(a_list) 
 		next_coroutine.close()
-		# print li 
+		# print li
+	except EOFError:
+		pass  
 	except AssertionError:
-		print 'a_vec length=',len(a_vec)
+		print 'a_vec length=',len(a_list)
+
 	finally: 
 		f.close() 
 	# print li # debug 
 	
 
 
-
+#CLEAR 
 @coroutine
 def HamEncoder(wdsize, next_coroutine):
 	""" 
@@ -112,6 +116,7 @@ def BCHencoder(wdsize, next_coroutine):
 			assert len(msg)==wdsize 
 			assert isinstance(msg, list) # type check : consumes list
 			enc_list = bch.encode( m, msg)
+			# print enc_list #debug 
 			next_coroutine.send(enc_list) 
 	except GeneratorExit:
 		next_coroutine.close()
@@ -125,10 +130,13 @@ def Printer(ofile):
 		while True: 
 			idata = (yield)
 			assert isinstance(idata, list) # type check. consumes a list 
-			print 'PRINTOUT: \n',idata #debug 
-			f = open(ofile,'a') 
-			s = ''.join(map(str,idata)) 
-			f.write(s)  
+			# print 'PRINTOUT: \n',idata #debug 
+			f = open(ofile,'ab') 
+			# f = open(ofile,'a') #debug 
+			# s = ''.join(map(str,idata)) #debug 
+			# f.write(s+'\n') #debug 
+			a = bitarray(idata) # convert the in_data to a bitarray for writing 
+			a.tofile(f) # write bytes  with padding  
 
 	except GeneratorExit:
 		f.close()
@@ -137,20 +145,21 @@ def Printer(ofile):
 		
 
 
-@coroutine
-def Corruption(ber, n_err, next_coroutine):
-	try:
-		while True:
+# @coroutine
+# def Corruption(ber, n_err, next_coroutine):
+# 	try:
+# 		while True:
 
-			vin = (yield)
-			noisy = hamm.noise( vin, ber, n_err) # a np array 
-			next_coroutine.send(noisy.tolist()) # send a list  
-	except GeneratorExit:
-		raise next_coroutine.close() 
+# 			vin = (yield)
+# 			noisy = hamm.noise( vin, ber, n_err) # a np array 
+# 			next_coroutine.send(noisy.tolist()) # send a list  
+# 	except GeneratorExit:
+# 		raise next_coroutine.close() 
 
 
 
 # ========================================// DECODER //===========================================
+#BUGGY 
 @coroutine
 def BCHdecoder(wdsize,next_coroutine):
 	""" 
@@ -172,12 +181,14 @@ def BCHdecoder(wdsize,next_coroutine):
 			if s1==0:
 				next_coroutine.send(recv[:wdsize]) # return original data for printing/writing 
 				noerr_count += 1
+				continue 
 			(A1,A2) = bch.errorLocator(m,s1,s3) 
 			errpol = bch.errorPoly( m, A1, A2) 
 			if errpol < 0:
 				# -------------decoding failure, return original data -------  
 				fail_count += 1  
 				next_coroutine.send(recv[:wdsize])
+				continue 
 			corr_vec = bch.correct(recv, errpol)
 			corr_count += 1  
 			assert isinstance(corr_vec, list) 
@@ -223,7 +234,7 @@ def HamDecoder(wdsize, next_coroutine):
  				next_coroutine.send(corr_vec) 
  			elif ERROR_STATUS_CODE == (1,0):
  				twoerr += 1
- 				next_coroutine.send(recv[:wdsize]) # detected 2 err, not correctable. send original data 
+ 				next_coroutine.send(recv[:wdsize]) # detected 2 err, not correctable. send original data(list)  
  			else:
  				raise ValueError
 
