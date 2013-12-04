@@ -596,9 +596,9 @@ def findError(synd, H_matrix):
     block_length = int(H_matrix.shape[1]) # H is a rxn matrix, so n is the code length 
     e = numpy.zeros(block_length,int) 
     for i in xrange(0,block_length):
-        e1 = numpy.copy(e)  #copy original zeros vector
-        e1[i] = 1
-        compare = numpy.dot(e1,H_matrix.transpose()) 
+        e1      = numpy.copy(e)  #copy original zeros vector
+        e1[i]   = 1
+        compare = numpy.dot(e1,H_matrix.transpose())
         if numpy.array_equal(compare,synd):
             return i # locator index 
         else:
@@ -609,8 +609,8 @@ def findError(synd, H_matrix):
 def correct(noisy, i):
     "flip bits at n-th position. return : a numpy.array "
     # copy the received vector first 
-    recv = numpy.copy(noisy)
-    recv[i] = int(not(recv[i]))  # flip the bit at location i 
+    recv    = numpy.copy(noisy)
+    recv[i] = int(not(recv[i]))  # flip the bit at location i
    
     return recv
  
@@ -622,10 +622,10 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
     h = partable[info_length] 
     # corrected = 0
     # uncorrected = 0
-    corr_cnt = 0
+    corr_cnt  = 0
     noerr_cnt = 0
-    fail_cnt = 0
-    beyond = 0 
+    fail_cnt  = 0
+    beyond    = 0
     for i in range(ITEARTION): # n incoming received message repetitions 
         msg = createMessage(info_length) # generate a random information vector u(x)
         enc = encode(msg, g) 
@@ -636,12 +636,12 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
         print "encoded msg: ", enc
 
         # ------introduce corruption --------------
-        noisy = noise(enc, erate, maxerr)
+        noisy    = noise(enc, erate, maxerr)
 
         #------check parity after corruption --------
-        op_after = noisy.tolist().count(1) % 2 
+        op_after = noisy.tolist().count(1) % 2
         # --------DED_flag denotes the status of DED part, 1 means detected parity mismatch -- --
-        DED_flag = op_before ^ op_after 
+        DED_flag = op_before ^ op_after
         print 'received mesage: ', noisy," parity(after pollution): ", op_after
         ep = [x^y for x,y in izip(noisy.tolist(),enc.tolist())] 
         print 'error pattern: ',  ep 
@@ -713,8 +713,8 @@ if __name__ == '__main__':
     
     length = int(raw_input('word width [must be valid]: '))
     n_iter = int(raw_input('Repetitions: '))
-    ber = float(raw_input('bit error rate: '))
-    nerr = int(raw_input('maximum number of errors: '))
+    ber    = float(raw_input('bit error rate: '))
+    nerr   = int(raw_input('maximum number of errors: '))
     eHamming(length,ber, nerr,n_iter) 
 
 

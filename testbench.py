@@ -16,7 +16,8 @@ import copy
 import numpy 
 import random 
 
-
+# ========== HELPERS ===========
+# /-----------------------------/
 def coroutine(func):
 	def start(*args,**keyargs):
 		g = func(*args,**keyargs)
@@ -35,12 +36,13 @@ def bytearray2vec(a):
 
 	
 
-# ========================== SECDED =======================================
 
  
-
+# wordsize to corresponding m in GF(2^m) mapping table 
 wd2mTable = {16:5, 32:6, 64:7, 128:8, 256:9} 
-# CLEAR 
+
+# CLEAR
+# ================== TERMINAL SIDE HELPERS ================== 
 def Reader(file,wdsize, next_coroutine):
 # def Reader(file,wdsize): #debug 
 	""" input: file to read (file), word size (wdsize) , next_coroutine 
@@ -70,7 +72,86 @@ def Reader(file,wdsize, next_coroutine):
 	finally: 
 		f.close() 
 	# print li # debug 
+
+@coroutine
+def Writer(ofile):
+	try:
+		f = open(ofile,'ab') 
+		while True: 
+			idata = (yield)
+			assert isinstance(idata, list) # type check. consumes a list 
+			assert len(idata) % 8 == 0 # optional: ensure byte-alignment 
+			# print 'PRINTOUT: \n',idata #debug 
+			
+			# f = open(ofile,'a') #debug 
+			# s = ''.join(map(str,idata)) #debug 
+			# f.write(s+'\n') #debug 
+			a = bitarray(idata) # convert the in_data to a bitarray for writing 
+			a.tofile(f) # write bytes  with padding  
+
+	except GeneratorExit:
+		f.close()
+		print ' ====DONE===='
+	finally:
+		if not f.closed:
+			f.close() 
+		else:
+			pass 
 	
+# ============== deal with non-alignment reading, i.e. the read bits are not multiple of 8 bit =====
+
+def NA_Reader(file, chunksize, next_coroutine):
+	""" 
+	read non-aligned codewords into a huge list and send one code each time as list down the piple  
+	in: chunksize: the #bits read at a time. may not be 8x 
+	out: send the read codeword list to next coroutine 
+	"""
+	f = open(file,'rb') 
+	a = bitarray() 
+	a.fromfile(f)
+	f.close() 
+	ptr = 0
+	ptr_end = a.length() 
+	while ptr < ptr_end and ptr + chunksize <= ptr_end: # prevent boundary overflow below 
+		 
+		code_list = map(int, a[ptr:ptr+chunksize].to01() )
+		print 'code chunk: ', code_list #debug  
+		next_coroutine.send(code_list) 
+		ptr += chunksize
+	if ptr < ptr_end: 
+		#send the last bit of odd end down the pipe, padding zeros 
+		oddend_list = map(int, a[ptr:].to01()) + [0]*(chunksize - ptr_end + ptr) # filling trailing 0s
+		next_coroutine.send(oddend_list)
+
+@coroutine
+def NA_Writer(ofile):
+	"similiar to NA_Reader; consumes non-aligned codeword and aggregate to a huge list then write file"
+	try:
+		f = open(ofile,'ab')
+		a = bitarray()
+		while True:
+			chunk = (yield) 
+			assert isinstance(chunk, list) 
+			a.extend(chunk) 
+
+
+		
+	except GeneratorExit:
+		a.tofile(f) # write the huge bitarray to file with zero padding at the rear end 
+		f.close() 
+		print '=== FILE WRITTEN ===' 
+		
+
+
+# =============================== END OF NON-ALIGNMENT TERMINAL SIDE HELPERS =====================
+# ////////////////////////////////////////////////////////////////////////////////////////////////////
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+		
+
+
+
+# ///////////////////// ENCODERS ////////////////////////////////////
+# //////////////////////////////////////////////////////////////////
 
 
 #CLEAR 
@@ -124,28 +205,7 @@ def BCHencoder(wdsize, next_coroutine):
 		print 'msg length =',len(msg)  
 
 
-@coroutine
-def Printer(ofile):
-	try:
-		while True: 
-			idata = (yield)
-			assert isinstance(idata, list) # type check. consumes a list 
-			# print 'PRINTOUT: \n',idata #debug 
-			f = open(ofile,'ab') 
-			# f = open(ofile,'a') #debug 
-			# s = ''.join(map(str,idata)) #debug 
-			# f.write(s+'\n') #debug 
-			a = bitarray(idata) # convert the in_data to a bitarray for writing 
-			a.tofile(f) # write bytes  with padding  
 
-	except GeneratorExit:
-		f.close()
-		print ' ====DONE===='
-	finally:
-		if not f.closed:
-			f.close() 
-		else:
-			pass 
 
 		
 
@@ -155,7 +215,7 @@ def Printer(ofile):
 
 
 # ========================================// DECODER //===========================================
-#BUGGY 
+# Tentative clear : 3-err detection nemesis
 @coroutine
 def BCHdecoder(wdsize,next_coroutine):
 	""" 
@@ -204,7 +264,7 @@ def BCHdecoder(wdsize,next_coroutine):
 
 		
 
-
+# CLEAR 
 @coroutine
 def HamDecoder(wdsize, next_coroutine):
  	""" 
@@ -289,21 +349,67 @@ def ErrorGen(vdd, next_coroutine):
 
 
 
- 
+
+# -----------ENCODER ALL-IN-ONE WRAPPER ---------------
+# ----------------------------------------------------
+
+def mainENC(ifile,ofile,ecctype,wdsize):
+	"encoder wrapper all-in-one testbench"
+	enc_dict = {'bch':BCHencoder, 'ham': HamEncoder}
+	assert isinstance(ecctype, str) and ecctype in enc_dict.keys() 
+
+	Reader(ifile, wdsize, enc_dict[ecctype](wdsize, NA_Writer(ofile)) )
+
+# ----------------- DECODER ALL-IN-ONE WRAPPER ---------
+# --------------------------------------------------------
+
+def mainDEC(ifile,ofile,ecctype,wdsize):
+ 	"decoder all-in-one wrapper testbench" 
+
+ 	dec_dict = {'bch':BCHdecoder, 'ham':HamDecoder} 
+ 	assert ecctype in dec_dict.keys() 
+ 	m = wd2mTable[wdsize] 
+ 	overhead_dict = {'bch':2*m, 'ham':m+1}  
+
+ 	blocklen = wdsize + overhead_dict[ecctype] # get codeword length 
+
+ 	NA_Reader( ifile, blocklen, dec_dict[ecctype](wdsize, Writer(ofile) ) ) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# TO BE REFINED  
 import getopt 
  
 def main():
 	encoder_sel = {'bch': BCHencoder, 'ham': HamEncoder}
+	
 	# ============PARSE command line arguments ============================
 	try:
-		opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhw:",['infile=','outfile=','bch', 'ham','wdsize=']) 
+		opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhedw:",['infile=','outfile=','bch', 'ham','wdsize=']) 
 	except getopt.GetoptError as err:
-		print "provide arguments : -i infile -o ofile -h(hamming) or -b(bch) -w(--wdsize) wordwidth" 
+		print "provide arguments : -i(--infile) -o(--ofile) -h/-b [choose ecc hamming/bch] -w(--wdsize) wordwidth" 
 		print str(err) 
 		sys.exit(2) 
+	# set defaults 
 	ofile = 'printout'
 	ifile = 'bin' 
-	print opts 
+	ecctype = 'ham' 
+	wdsize = 16 
+	print opts # debug 
 	for option,arg in opts:
 		if option in ('-i','--infile'):
 			ifile = arg 
@@ -314,12 +420,13 @@ def main():
 		elif option in ('-h','--ham'):
 			ecctype = 'ham' 
 		elif option in ('-w','--wdsize'):
-			wdsize = int(arg ) 
+			wdsize = int(arg )
+		
 
 		else:
 			assert False, 'unhandled option' 
 	# ==============================================END OF Arg parser ===================
-	Reader( ifile, wdsize, encoder_sel[ecctype](wdsize, Printer(ofile) ) ) 
+	Reader( ifile, wdsize, encoder_sel[ecctype](wdsize, Writer(ofile) ) ) 
 
 if __name__ == '__main__':
 	main() 

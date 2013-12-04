@@ -42,3 +42,24 @@ use array('B') [read a byte each time] and array.fromfile(f,n) to form a list
 Nov 27 
 -) wrote pipeline (coroutines) encoder testbench with command line arguments 
 *) finish decoder testbench 
+
+Nov 28 
+
+-) tested testbench.py on jpg file. passed tests. added log files
+*) how to enable 3-error detection without mis-correct on BCH ?? 
+-) for SEC-DED . if 3 errors, it's possible that syndrome == 0 !!! so SEC,DED will be 0,1 .  
+-----------for example -------------
+original message:  [1 1 1 0 1 1 0 1 1 1 0 1 1 0 1 0]  parity:  1
+encoded msg:  [1 1 1 0 1 1 0 1 1 1 0 1 1 0 1 0 1 0 0 0 1]
+received mesage:  [1 1 0 0 1 1 1 1 1 1 0 1 0 0 1 0 1 0 0 0 1]  parity(after pollution):  0
+error pattern:  [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+number of errors:  3
+syndrome vector:  [0 0 0 0 0]
+The impossible occurs, something wrong! fatal 
+----------------------------------------
+
+
+
+Dec 2 
+*) to write a adaptor : long list --> binary file for encoder printout 
+*) draft SECDED RTL design 
