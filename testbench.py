@@ -42,7 +42,7 @@ def bytearray2vec(a):
 wd2mTable = {16:5, 32:6, 64:7, 128:8, 256:9} 
 
 # CLEAR
-# ================== TERMINAL SIDE HELPERS ================== 
+# ================== TERMINAL SIDE HELPERS FILE R/W================== 
 def Reader(file,wdsize, next_coroutine):
 # def Reader(file,wdsize): #debug 
 	""" input: file to read (file), word size (wdsize) , next_coroutine 
@@ -350,7 +350,7 @@ def ErrorGen(vdd, next_coroutine):
 
 
 
-# -----------ENCODER ALL-IN-ONE WRAPPER ---------------
+# -----------ENCODER ALL-IN-ONE WRAPPER --------------
 # ----------------------------------------------------
 
 def mainENC(ifile,ofile,ecctype,wdsize):
@@ -361,7 +361,7 @@ def mainENC(ifile,ofile,ecctype,wdsize):
 	Reader(ifile, wdsize, enc_dict[ecctype](wdsize, NA_Writer(ofile)) )
 
 # ----------------- DECODER ALL-IN-ONE WRAPPER ---------
-# --------------------------------------------------------
+# ------------------------------------------------------
 
 def mainDEC(ifile,ofile,ecctype,wdsize):
  	"decoder all-in-one wrapper testbench" 
@@ -395,20 +395,60 @@ def mainDEC(ifile,ofile,ecctype,wdsize):
 import getopt 
  
 def main():
-	encoder_sel = {'bch': BCHencoder, 'ham': HamEncoder}
+	""" 
+	-----------------Testbench User Guide----------------------
+	This is a testbench for BCH/SECDED enc/dec test via command-line options/args 
+	3 modes of test: 
+	------------------------
+	'whole' [default mode] : 
+		all-in-one test. binary file Reader-->Encoder(BCH/HAM) --> ErrorGen(Vdd) --> Decoder(BCH/Ham) -->Writer(outfile)
+		under 'whole', vdd is default to 0.8V. please specify by -v0.7 for example 
+
+	'enc': encoder mode. provide the option -e/--enc. Reader-->Encode-->NA_Writer must provide I/O filename and wordsize 
+	'dec': decoder mode. provide the option -d/--dec  NA_Reader --> Decode --> Writer 
+	---------------------
+	OPTIONS 
+	--------------------
+	-i/--ifile : Input filename. eg. -ifoo (reads file 'foo') set to 'bin' by default 
+	-o/--ofile : Output filename . similiar to ifile in usage set to 'printout' by default 
+	-h/-b: ECCtype BCH/SECDED(Hamming) set to 'h' [hamming] by default 
+	-w/--wdsize: word width. choose among (16,32,64,128,256) ; set to 16 by default 
+	-e/-d | --enc/--dec : mode select [dec/enc] . 'whole' by default if not specified 
+	-----------------------
+	Example Use: 
+	-----------------------
+	./testbench -ibin -oausgang -w32 -v0.7 -b  
+	whole pipeline test under vdd=0.7, wordwidth=32, file-to-read = 'bin', file-to-write='ausgang' , ECCtype = BCH 
+	./testbench -ibin -oausgang -w64 -b -e (encoder mode ) 
+	
+	"""
+
+
+
+
+
+
+
+
+	encmap = {'bch': BCHencoder, 'ham': HamEncoder}
+	decmap = {'bch': BCHdecoder, 'ham': HamDecoder}
 	
 	# ============PARSE command line arguments ============================
 	try:
-		opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhedw:",['infile=','outfile=','bch', 'ham','wdsize=']) 
+		opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) 
 	except getopt.GetoptError as err:
-		print "provide arguments : -i(--infile) -o(--ofile) -h/-b [choose ecc hamming/bch] -w(--wdsize) wordwidth" 
 		print str(err) 
+		print "provide arguments : -i(--infile) -o(--ofile) -h/-b [choose ecc hamming/bch] -w(--wdsize) wordwidth -e/-d [enc/dec] whole-test by default" 
+		print main.__doc__
+
 		sys.exit(2) 
 	# set defaults 
 	ofile = 'printout'
 	ifile = 'bin' 
 	ecctype = 'ham' 
 	wdsize = 16 
+	mode = 'whole'
+	vdd = 0.8 
 	print opts # debug 
 	for option,arg in opts:
 		if option in ('-i','--infile'):
@@ -421,12 +461,30 @@ def main():
 			ecctype = 'ham' 
 		elif option in ('-w','--wdsize'):
 			wdsize = int(arg )
-		
+		elif option in ('-e','--enc'):
+			mode = 'enc' 
+		elif option in ('-d','--dec'):
+			mode = 'dec' 
+		elif option in ('-v',):
+			vdd = float(arg) 
 
 		else:
 			assert False, 'unhandled option' 
 	# ==============================================END OF Arg parser ===================
-	Reader( ifile, wdsize, encoder_sel[ecctype](wdsize, Writer(ofile) ) ) 
+	try:
+		if mode == 'whole':
+			Reader(ifile, wdsize, encmap[ecctype](wdsize, ErrorGen(vdd, decmap[ecctype](wdsize,Writer(ofile)) ))) 
+		elif mode == 'enc':
+			mainENC( ifile, ofile, ecctype, wdsize) 
+		elif mode == 'dec':
+			mainDEC( ifile, ofile, ecctype, wdsize) 
+		else:
+			raise ValueError
+	except ValueError:
+		print 'mode must be enc/dec or whole' 
+
+
+
 
 if __name__ == '__main__':
 	main() 
