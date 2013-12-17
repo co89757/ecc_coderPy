@@ -38,10 +38,10 @@ p=os.getcwd() ; sys.path.append(p)
 from toyhamm import p16,p32,p64,p128,p256 
 
 
-
+import bch2 
 import numpy as np
 
-op = lambda p: np.array( [int(not(sum(row) % 2)) for row in p] ) 
+op = lambda p: np.array( [int(not(sum(row) % 2)) for row in p] ) # overall parity column generator 
 
 P16 = np.column_stack( (p16,op(p16)) ) 
 P32 = np.column_stack( (p32,op(p32)) ) 
@@ -59,6 +59,9 @@ N256 = np.transpose(P256) # name matrices. rxn
 
 wd2N = {16:N16, 32:N32, 64:N64, 128:N128, 256:N256}
 
+
+
+# Parity generation for Hamming 
 def paritygen(wdsize):
 	"code Generator for parity generation" 
 	NameMat = wd2N[wdsize]  # get name matrix (rxn)
@@ -81,6 +84,66 @@ def paritygen(wdsize):
 
 
 	# f.close() #file IO 
+
+
+# Parity generation for BCH 
+
+import math 
+def BCHParGen(k):
+	"k = word width "
+	m = int(math.ceil(math.log(k, 2)) ) + 1 # GF(2^m) 
+	r = 2*m # number of checkbits 
+	nameMatx = bch2.genMatrix(k) 
+	nameMatx = nameMatx[:,:r].transpose()  # a numpy array
+	result_s = '' 
+	for rowid,row in enumerate(nameMatx):
+		s = 'assign par[{0}] = '.format(rowid) 
+		incl_d_index = np.nonzero(row) 
+		incl_d_index = incl_d_index[0].astype('int') # get a array of included databit indices 
+		for i in incl_d_index:
+			ss = 'datareg[{0}] ^ '.format(i) if i != incl_d_index[-1] else 'datareg[{0}];'.format(i) 
+			s += ss 
+		# print >>f, s  #file IO
+		s += '\n' # string return
+
+		result_s += s #string return 
+
+	with open('bchenc.txt','w') as f:
+		print >>f , result_s 
+
+
+
+	return result_s #string return 
+
+
+# BCH syndrome bit calculation 
+
+def BCHSyndGen(k):
+	" generate code for syndrome bit generation using s=rxHT " 
+	H = bch2.parMatrix(k) 
+	result_s = '' 
+	for rowid,row in enumerate(H):
+		s = 'assign synd[{0}] = '.format(rowid) 
+		one_bit_index = np.nonzero(row)[0].astype('int') 
+		for i in one_bit_index:
+			ss = 'codereg[{0}] ^ '.format(i) if i != one_bit_index[-1] else 'codereg[{0}];'.format(i) 
+			s += ss 
+		s += '\n' 
+
+		result_s += s 
+
+	with open('bchsyndgen.txt','w') as f:
+		print >>f, result_s 
+	return result_s  
+
+
+
+
+
+
+
+
+
 
 
 def hamenc_codegen(wdsize):
@@ -221,6 +284,48 @@ def syndsolve(wdsize):
 	finals += s2 
 
 	return finals 		
+
+# BCH syndrome to error mapping code generator 
+
+def BCHSynd2Err(k):
+	"syndrome to flip pattern mapping code generator " 
+	maptable = bch2.errbit2synd(k) 
+	m = int(math.ceil(math.log(k, 2)) ) + 1 # GF(2^m) 
+	r = 2*m # number of checkbits 
+	neg = lambda x: '~' if x == 0 else ''
+	result_s  = '' 
+	for i in xrange(k): # iterate across all dataflip bits 
+		line = 'assign flip[{0}] = '.format(i) 
+		syndpatlist = maptable[i] # syndrome pattern mapped to flip[i] 
+		for subpatid, subpat in enumerate(syndpatlist): # iterate across subpatterns that comprise synpat 
+			ss = '' # for a subpattern 
+			for bitind, synbit in enumerate(subpat):
+				sss = '{sign}synd[{index}] & '.format(sign = neg(synbit), index = bitind) if bitind != r-1 else '{sign}synd[{index}]'.format(sign = neg(synbit), index = bitind)
+				ss += sss 
+			ss = '(' + ss + ')|' if subpatid != len(syndpatlist)-1 else '(' + ss+ ');' 
+
+			line += ss 
+		line += '\n' 
+		result_s += line 
+		
+
+	with open('bchsyndsolve.txt','w') as f:
+		print >>f, result_s 
+
+	# return result_s 
+
+
+
+
+		
+
+
+
+
+
+
+
+
 
 def hamdec_codegen(wdsize):
 	k2rmap={16:6,32:7,64:8,128:9,256:10}

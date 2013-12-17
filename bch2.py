@@ -12,7 +12,7 @@ from gfield import *
 from itertools import combinations, izip 
 import numpy as np 
 import math 
-from bch import minpol 
+from bch import minpol, CreateMessage , noise  
 
 # -------/ Helper functions /------------
 
@@ -94,12 +94,14 @@ def parMatrix(k, transpose=False):
 def decoder(code,k):
 	"take prepended code as a list and decode it , return the corrected codeword as list. report err status"
 	assert isinstance(code, list)
-	m = int(math.ceil(math.log(k, 2)) ) + 1 # DEBUG 
+	m = int(math.ceil(math.log(k, 2)) ) + 1  
 	r = m*2  
 	HT_array = parMatrix(k, True) 
 	c_array = np.array(code) 
 	s_array = np.dot(c_array,HT_array) % 2 
 	s_array = s_array.astype('int')   # syndrome vector as a np array 
+	# print 'syndrome: ', s_array.tolist() # DEBUG 
+	# print 'HT matrix: \n', HT_array # DEBUG 
 	if not any(s_array):
 		print 'no error'
 		return code  
@@ -113,24 +115,28 @@ def decoder(code,k):
 		e1 = np.copy(e_array) 
 		e1[i] = 1
 
-		prod = np.dot(e1, HT_array) 
+		prod = np.dot(e1, HT_array) % 2 
 		if np.array_equal( prod, s_array):
 			code_out = [x^y for x,y in izip(e1,code)] 
-			print '1 err at {0}-th position'.format(i)  
-			return code_out 
+			print '1 err at {0}-th position'.format(i), '\n -------------------' 
+			return code_out
+		else:
+			continue  
 	# 2-error pattern
 	for i,j in combinations(range(k+r),2):
-		e2 = np.copy(e_array)
+		e2 = np.zeros(k+r, dtype = int ) 
 		e2[i] = 1 
 		e2[j] = 1 
-		product = np.dot(e2, HT_array)
+		product = np.dot(e2, HT_array) % 2 
 		if np.array_equal(product,s_array):
 		 	code_out = [x^y for x,y in izip(e2,code)] 
-		 	print '2 error, postion at ({0},{1}).'.format(i,j) 
+		 	print '2 error, postion at ({0},{1}).'.format(i,j) , '\n ------------------' 
 		 	return code_out 
+		else:
+			continue 
 
 	# no name-match 
-	print 'beyond error correctability'
+	print 'beyond error correctability \n -----------------'
 	return code  
 
 
@@ -170,6 +176,59 @@ def errbit2synd(k):
 	return dic 
 
 
+
+
+def main(k, ber, nerr, ITERATION=10):
+	"testbench of combinational BCH" 
+
+	m = int(math.ceil(math.log(k, 2)) ) + 1 # DEBUG 
+	r = m*2 
+	
+	
+	
+	# -----------------------------END OF INIT --------------------------
+
+	for i in range(ITERATION):
+		# ----------ENCODER PART --------------------
+
+		info = CreateMessage(k) 
+		vec2hex = lambda v:hex(int(''.join(map(str,v)),2)) 
+		enc = encoder(info, k)  
+		print 'data_in:  ', info 
+		print 'in_data HEX : ', vec2hex(info) 
+		print 'encoded codeword: ',enc, 'parity: ', enc[:r]
+		print 'encoded HEX: ', vec2hex(enc) 
+		
+		# ------------NOISE/POLLUTION -------------------
+
+		received = noise( enc, ber, nerr ) 
+		err_vector = [x^y for x,y in izip(received, enc)]  
+		print 'received code: ', received 
+		print 'error pattern: ', err_vector  
+		print 'number of errors = ', sum(err_vector) 
+
+
+		# -------------- DECODER PART --------------------
+		out_code = decoder( received, k) 
+
+		if out_code[-k:] == info:
+			print 'clean readout !!!'
+		else:
+			print 'false readout ...'
+		
+		print '-------------------- NEXT -----------------'
+
+		 
+if __name__ == '__main__':
+	datasize = int(raw_input('data word size = ')) 
+	errate = float(raw_input('bit error rate = ')) 
+	maxerr = int(raw_input('max error occurences = ')) 
+	reads = int(raw_input(' iterations = ')) 
+
+	main(datasize, errate, maxerr, reads) 
+	
+	# TEST NOTE: still prone to 3-err miscorrection. a 3-error syndrome could equal a 2-error syndrome 
+		 
 
 
 		

@@ -626,14 +626,16 @@ def eHamming(info_length, erate, maxerr, ITEARTION=5):
     noerr_cnt = 0
     fail_cnt  = 0
     beyond    = 0
+    tohex= lambda array: hex(int(''.join(map(str,array)),2)) 
     for i in range(ITEARTION): # n incoming received message repetitions 
         msg = createMessage(info_length) # generate a random information vector u(x)
         enc = encode(msg, g) 
 
         # ------- check parity right after encoder : parity before corruption ----------
-        op_before =  enc.tolist().count(1) % 2 
-        print "original message: ", msg, " parity: ",op_before 
-        print "encoded msg: ", enc
+        op_before =  enc.tolist().count(1) % 2
+        enc_op = numpy.append(enc,op_before)  
+        print "original message hex: ", tohex(msg)   
+        print "encoded msg SECDED hex: ", tohex(enc_op) 
 
         # ------introduce corruption --------------
         noisy    = noise(enc, erate, maxerr)
