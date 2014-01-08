@@ -300,14 +300,15 @@ def BCHSynd2Err(k):
 		for subpatid, subpat in enumerate(syndpatlist): # iterate across subpatterns that comprise synpat 
 			ss = '' # for a subpattern 
 			for bitind, synbit in enumerate(subpat):
-				sss = '{sign}synd[{index}] & '.format(sign = neg(synbit), index = bitind) if bitind != r-1 else '{sign}synd[{index}]'.format(sign = neg(synbit), index = bitind)
+				sss = '{sign}synd[{index}] & '.format(sign = neg(synbit), index = bitind) if \
+				bitind != r-1 else '{sign}synd[{index}]'.format(sign = neg(synbit), index = bitind)
 				ss += sss 
 			ss = '(' + ss + ')|' if subpatid != len(syndpatlist)-1 else '(' + ss+ ');' 
 
 			line += ss 
 		line += '\n' 
 		result_s += line 
-		
+
 
 	with open('bchsyndsolve.txt','w') as f:
 		print >>f, result_s 

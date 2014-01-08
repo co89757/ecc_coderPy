@@ -1,7 +1,8 @@
 # File-based testbench of BCH and SEC-DED. Stream-data from binary files IO 
 # Author: Colin
 # Date created: Nov 26 2013 Encoder testbench . write to a file_out (binary) 
-# My idea: write a generator/coroutine to achieve enc/dec pipeline for input binary data stream 
+# My idea: write a generator/coroutine to achieve enc/dec pipeline for input binary data stream
+# EN/DECODER **APPEND** parity bits in all ECCs used here  
 
 import os,sys
 
@@ -55,15 +56,11 @@ def Reader(file,wdsize, next_coroutine):
 			
 			a = bitarray() 
 			a.fromfile(f,n_bytes) 
-			a_list = map(int, a.to01() ) 
-			# a = array('B')	 
-			# a.fromfile(f, n_bytes) # grab a word each time 
-			# a_list = bytearray2vec(a) 
-			assert len(a_list)==wdsize  
-			# li.extend(a_list) #debug 
+			a_list = map(int, a.to01() ) 	
+			assert len(a_list)==wdsize  	 
 			next_coroutine.send(a_list) 
 		next_coroutine.close()
-		# print li
+		 
 	except EOFError:
 		pass  
 	except AssertionError:
@@ -76,6 +73,9 @@ def Reader(file,wdsize, next_coroutine):
 @coroutine
 def Writer(ofile):
 	try:
+		#Check if ofile exists, if so, remove it first NEWLY ADDED 
+		if os.path.isfile(ofile):
+			os.remove(ofile) 
 		f = open(ofile,'ab') 
 		while True: 
 			idata = (yield)
@@ -105,6 +105,7 @@ def NA_Reader(file, chunksize, next_coroutine):
 	read non-aligned codewords into a huge list and send one code each time as list down the piple  
 	in: chunksize: the #bits read at a time. may not be 8x 
 	out: send the read codeword list to next coroutine 
+	
 	"""
 	f = open(file,'rb') 
 	a = bitarray() 
@@ -127,20 +128,80 @@ def NA_Reader(file, chunksize, next_coroutine):
 def NA_Writer(ofile):
 	"similiar to NA_Reader; consumes non-aligned codeword and aggregate to a huge list then write file"
 	try:
+		if os.path.isfile(ofile):  # NEWLY ADDED: check if file exist
+			os.remove(ofile)
 		f = open(ofile,'ab')
 		a = bitarray()
 		while True:
 			chunk = (yield) 
 			assert isinstance(chunk, list) 
 			a.extend(chunk) 
-
-
 		
 	except GeneratorExit:
 		a.tofile(f) # write the huge bitarray to file with zero padding at the rear end 
 		f.close() 
 		print '=== FILE WRITTEN ===' 
 		
+
+#****   RE-INTERLEAVE THE RED. AND DATA. FILE INTO A ENCODED FILE ***  NEWLY ADDED 
+#PENDING 
+def Interleave(dfile,rfile,k,r,outname='encfile'):
+	""" 
+	re-interleave the data and red. file into a normal interleaved encoded file 
+	in: dfile(datafile),rfile(redundancy bits file),k(wordsize),r(number of parity)
+	out: a interleaved join of data and redundancy-bits file. a encoded file 
+	"""
+	assert isinstance(dfile,str) and isinstance(rfile,str) 
+	# initialize bitarray to store data file and redundancy file 
+	data_bita = bitarray()   
+	red_bita = bitarray()
+	# read from file , store content in a big bitarray  
+ 	df = open(dfile,'rb') 
+ 	data_bita.fromfile(df)
+ 	# print 'show df content' #DEBUG
+ 	# print data_bita.to01() #DEBUG
+
+ 	data_list = map(int, data_bita.to01() )  
+ 	df.close() 
+
+ 	rf = open(rfile,'rb') 
+ 	red_bita.fromfile(rf)
+ 	# print 'show rf content' #DEBUG
+ 	# print red_bita.to01() #DEBUG 
+ 	red_list = map(int, red_bita.to01()) 
+ 	rf.close() 
+ 	# out list 
+ 	out_list=[]
+ 	#iterator of data bitarray
+ 	pd = 0 
+ 	pd_end = data_bita.length() 
+ 	pr = 0 
+ 	assert data_bita.length() % k ==0  # check data alignment 
+ 	#iterator of red. bitarray
+ 	while pd<pd_end:
+ 		codeword_list = data_list[pd:pd+k] + red_list[pr:pr+r] # each time extract k,r bits from data and red and join 
+ 		out_list += codeword_list 
+ 		pd += k 
+ 		pr += r 
+
+ 	out_bita = bitarray(out_list) 
+ 	print 'show out_list content \n', out_bita.to01()  #DEBUG 
+ 	outf = open(outname,'wb') # overwrite encfile 
+ 	out_bita.tofile(outf)
+ 	outf.close() 
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # =============================== END OF NON-ALIGNMENT TERMINAL SIDE HELPERS =====================
@@ -156,13 +217,14 @@ def NA_Writer(ofile):
 
 #CLEAR 
 @coroutine
-def HamEncoder(wdsize, next_coroutine):
+def HamEncoder(wdsize, next_coroutine,redonly=False):
 	""" 
 	Hamming encoder 
 	in: wdsize and take a list
 	out: a encoded vector (list)
+	redonly: store redundancy bits in a separate file and only output the redundancy file. 
 	"""
-
+	r = wd2mTable[wdsize] + 1 # number of parity incl. overall parity. SECDED 
 	# print '----- SECDED Encoding -------'
 	try:
 		while True:
@@ -174,19 +236,23 @@ def HamEncoder(wdsize, next_coroutine):
 		 	enc_list = enc_np.tolist() 
 		 	op = enc_list.count(1) % 2 # compute overall parity bit 
 		 	enc_list.append(op) # append overall parity bits
-		 	# send a np array to next 
-		 	next_coroutine.send(enc_list)  
+		 	# send a np array to next, added a redonly option; NEW MODIFICATION 
+		 	if redonly:  
+		 		next_coroutine.send(enc_list[-r:]) 
+		 	else:
+		 		next_coroutine.send(enc_list)  
 	 	# enc = list(enc)  #  for writing bin files. 
 	except GeneratorExit:
 		next_coroutine.close() 
-	except AssertionError:
-		print 'msg length=',len(msg)
+	# except AssertionError:
+	# 	print 'ASSERTION ERROR! msg length=',len(msg)
 # =========================================BCH ENCODER =======================
 @coroutine
-def BCHencoder(wdsize, next_coroutine):
+def BCHencoder(wdsize, next_coroutine,redonly=False):
 	""" 
 	in: wdsize, take (yield) as a list 
 	out: a encoded list of bits 
+	redonly: optional redundancy only file output 
 	""" 
 
 	# print ' ----- BCH Encoding ------------'
@@ -197,12 +263,15 @@ def BCHencoder(wdsize, next_coroutine):
 			assert len(msg)==wdsize 
 			assert isinstance(msg, list) # type check : consumes list
 			enc_list = bch.encode( m, msg)
-			# print enc_list #debug 
-			next_coroutine.send(enc_list) 
+			# print enc_list #debug
+			if redonly:
+				next_coroutine.send(enc_list[-2*m:])  # only send the redundancy bits, 2m of them 
+			else: 
+				next_coroutine.send(enc_list) 
 	except GeneratorExit:
 		next_coroutine.close()
-	except AssertionError:
-		print 'msg length =',len(msg)  
+	# except AssertionError:
+	# 	print 'ASSERTION ERROR! msg length =',len(msg)  
 
 
 
@@ -293,7 +362,7 @@ def HamDecoder(wdsize, next_coroutine):
  				corr_np = hamm.correct(recv[:-1], error_index)
  				corr_vec = corr_np.tolist() 
  				corrected += 1 
- 				next_coroutine.send(corr_vec) 
+ 				next_coroutine.send(corr_vec[:wdsize]) 
  			elif ERROR_STATUS_CODE == (1,0):
  				corrupted += 1  # detected a corrupt word , unable to correct 
  				twoerr += 1
@@ -360,6 +429,16 @@ def mainENC(ifile,ofile,ecctype,wdsize):
 
 	Reader(ifile, wdsize, enc_dict[ecctype](wdsize, NA_Writer(ofile)) )
 
+
+
+## *****  Only output redundancy-bits file **** 
+def mainENC2(ifile,ofile,ecctype,wdsize):
+	"encoder wrapper , using separate data and red. storage files" 
+	enc_dict = {'bch':BCHencoder, 'ham': HamEncoder}
+	assert isinstance(ecctype, str) and ecctype in enc_dict.keys() 
+
+	Reader(ifile, wdsize, enc_dict[ecctype](wdsize, NA_Writer(ofile),True) )
+
 # ----------------- DECODER ALL-IN-ONE WRAPPER ---------
 # ------------------------------------------------------
 
@@ -374,6 +453,23 @@ def mainDEC(ifile,ofile,ecctype,wdsize):
  	blocklen = wdsize + overhead_dict[ecctype] # get codeword length 
 
  	NA_Reader( ifile, blocklen, dec_dict[ecctype](wdsize, Writer(ofile) ) ) 
+
+
+
+
+def mainDEC2(dfile,rfile,ofile,ecctype,wdsize):
+	"decoder wrapper alternative. using separate data and red. files and re-interleave the two "
+	dec_dict = {'bch':BCHdecoder, 'ham':HamDecoder} 
+ 	assert ecctype in dec_dict.keys() 
+ 	m = wd2mTable[wdsize] 
+ 	overhead_dict = {'bch':2*m, 'ham':m+1}  
+ 	r= overhead_dict[ecctype]
+
+ 	blocklen = wdsize + r # get codeword length 
+
+ 	Interleave(dfile,rfile,wdsize,r) # re-interleave data and red. file 
+
+ 	NA_Reader( 'encfile', blocklen, dec_dict[ecctype](wdsize, Writer(ofile) ) )
 
 
 
@@ -409,11 +505,16 @@ def main():
 	---------------------
 	OPTIONS 
 	--------------------
+	-s : separate mode. encoder only output parity file. decoder takes 2 files, data and parity file and re-interleave 
+	-p: in separate mode [-s], followed by parity file that feeds into the decoder along with data file . ONLY WORKS WITH -s turned on 
 	-i/--ifile : Input filename. eg. -ifoo (reads file 'foo') set to 'bin' by default 
 	-o/--ofile : Output filename . similiar to ifile in usage set to 'printout' by default 
 	-h/-b: ECCtype BCH/SECDED(Hamming) set to 'h' [hamming] by default 
 	-w/--wdsize: word width. choose among (16,32,64,128,256) ; set to 16 by default 
 	-e/-d | --enc/--dec : mode select [dec/enc] . 'whole' by default if not specified 
+
+	**WARNING**
+	when -s and -d are both ON, decoder needs both data file (ifile) and parity file (-p:) provided by -p option. SO -p MUST BE ON ALSO!!
 	-----------------------
 	Example Use: 
 	-----------------------
@@ -435,20 +536,24 @@ def main():
 	
 	# ============PARSE command line arguments ============================
 	try:
-		opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) 
+		# opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) 
+		opts, remainder = getopt.getopt(sys.argv[1:],"i:p:so:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) #NEWLY ADDED
 	except getopt.GetoptError as err:
 		print str(err) 
-		print "provide arguments : -i(--infile) -o(--ofile) -h/-b [choose ecc hamming/bch] -w(--wdsize) wordwidth -e/-d [enc/dec] whole-test by default" 
+		print "provide arguments : -i(--infile) -o(--ofile) -s(separate mode) -p(parity file input) \
+		\n -h/-b [choose ecc hamming/bch] -w(--wdsize) wordwidth -e/-d [enc/dec] whole-test by default" 
 		print main.__doc__
 
 		sys.exit(2) 
 	# set defaults 
-	ofile = 'printout'
+	ofile = 'out_default'
 	ifile = 'bin' 
 	ecctype = 'ham' 
 	wdsize = 16 
 	mode = 'whole'
+	alternate_mode = False 
 	vdd = 0.8 
+	parity_f = 'out_default'
 	print opts # debug 
 	for option,arg in opts:
 		if option in ('-i','--infile'):
@@ -466,18 +571,30 @@ def main():
 		elif option in ('-d','--dec'):
 			mode = 'dec' 
 		elif option in ('-v',):
-			vdd = float(arg) 
+			vdd = float(arg)
+		elif option in ('-s',):
+			alternate_mode = True 
+		elif option in ('-p',):
+			parity_f = arg 
+
 
 		else:
 			assert False, 'unhandled option' 
 	# ==============================================END OF Arg parser ===================
 	try:
+
 		if mode == 'whole':
 			Reader(ifile, wdsize, encmap[ecctype](wdsize, ErrorGen(vdd, decmap[ecctype](wdsize,Writer(ofile)) ))) 
 		elif mode == 'enc':
-			mainENC( ifile, ofile, ecctype, wdsize) 
+			if alternate_mode: # alternate mode ON 
+				mainENC2(ifile,ofile,ecctype,wdsize)
+			else: # alternate mode OFF 
+				mainENC( ifile, ofile, ecctype, wdsize) 
 		elif mode == 'dec':
-			mainDEC( ifile, ofile, ecctype, wdsize) 
+			if alternate_mode:
+				mainDEC2(ifile,parity_f,ofile,ecctype,wdsize)
+			else:
+				mainDEC( ifile, ofile, ecctype, wdsize) 
 		else:
 			raise ValueError
 	except ValueError:
