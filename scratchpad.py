@@ -1,5 +1,4 @@
-
-
+# PLEASE NOTE: ------- SECDED/HSIAO use [APPENDING ] checkbits ; BCH uses [PREPENDING ] checkbits 
 
 
 
@@ -120,11 +119,11 @@ def BCHParGen(k):
 
 def BCHSyndGen(k):
 	" generate code for syndrome bit generation using s=rxHT " 
-	H = bch2.parMatrix(k) 
+	H = bch2.checkMatrix(k) 
 	result_s = '' 
 	for rowid,row in enumerate(H):
 		s = 'assign synd[{0}] = '.format(rowid) 
-		one_bit_index = np.nonzero(row)[0].astype('int') 
+		one_bit_index = np.nonzero(row)[0].astype('int') # a array of set-bit indices of each H row 
 		for i in one_bit_index:
 			ss = 'codereg[{0}] ^ '.format(i) if i != one_bit_index[-1] else 'codereg[{0}];'.format(i) 
 			s += ss 
@@ -137,8 +136,18 @@ def BCHSyndGen(k):
 	return result_s  
 
 
+# IGNORE PARITY ERRORS -------------------------
+def ignore(r):
+    "generate flag for ignore parity err "
+    reduced_sum_width = int(math.floor(math.log(r,2)) ) + 1 
+    line1="wire [{topid}:0] sbitsum = ".format(topid=reduced_sum_width-1)  
+    for i in xrange(r):
+        item = "synd[{0}] + ".format(i) if i < r-1 else 'synd[{0}];\n'.format(i) 
+        line1 += item 
 
+    line2 = "wire ignore = (sbitsum==1)? 1:0; \n" 
 
+    return (line1+line2)
 
 
 
@@ -231,7 +240,7 @@ def hamenc_codegen(wdsize):
 
 	f.close() 
 
-
+#Hamming Code Syndrome generator 
 def syndgen(wdsize):
 	NameMat = wd2N[wdsize] 
 	result_s = ''  #string return 
@@ -250,7 +259,7 @@ def syndgen(wdsize):
 	return result_s #string return 
 
 k2pmap= {16:P16, 32:P32, 64:P64, 128:P128, 256:P256}
-
+#Hamming Code Syndrome Solver
 def syndsolve(wdsize):
 	"syndrome decoding code generation"
 	k2rmap={16:6,32:7,64:8,128:9,256:10} 
@@ -294,16 +303,24 @@ def BCHSynd2Err(k):
 	r = 2*m # number of checkbits 
 	neg = lambda x: '~' if x == 0 else ''
 	result_s  = '' 
-	for i in xrange(k): # iterate across all dataflip bits 
+	noerr_line='assign noerr = '
+	for i in xrange(r):
+		ss = '~synd[{0}] & '.format(i) if i !=r-1 else '~synd[{0}];'.format(i) 
+		noerr_line += ss 
+
+	noerr_line += '\n' 
+	result_s += noerr_line 
+	for i in xrange(k): # iterate across all dataflip bits INDEX PROBLEM!! DATABIS starts at (r)-th position !!  
 		line = 'assign flip[{0}] = '.format(i) 
 		syndpatlist = maptable[i] # syndrome pattern mapped to flip[i] 
 		for subpatid, subpat in enumerate(syndpatlist): # iterate across subpatterns that comprise synpat 
-			ss = '' # for a subpattern 
+			ss = '' # for a synd pattern-match 
 			for bitind, synbit in enumerate(subpat):
+				# sss for individual syndrome bits 
 				sss = '{sign}synd[{index}] & '.format(sign = neg(synbit), index = bitind) if \
 				bitind != r-1 else '{sign}synd[{index}]'.format(sign = neg(synbit), index = bitind)
 				ss += sss 
-			ss = '(' + ss + ')|' if subpatid != len(syndpatlist)-1 else '(' + ss+ ');' 
+			ss = '(' + ss + ')|' if subpatid != len(syndpatlist)-1 else '(' + ss+ ');' # a synd-pattern match (S_vec) 
 
 			line += ss 
 		line += '\n' 
@@ -313,7 +330,132 @@ def BCHSynd2Err(k):
 	with open('bchsyndsolve.txt','w') as f:
 		print >>f, result_s 
 
-	# return result_s 
+	return result_s #return text generated 
+
+
+
+def BCHdec_codegen(k):
+	"code generator for BCH(k,t=2) decoder k is word size"
+	m = int(math.ceil(math.log(k, 2)) ) + 1 # GF(2^m) 
+	r = 2*m # number of checkbits 
+	fname = 'bch_dec.v' 
+	f = open(fname,'w')
+	n = r + k 
+	head = """ 
+	module bch_{Wsize}_dec (
+	clk,
+	reset_n,
+	enable,
+	i_code,
+	o_data,
+	o_valid,
+	o_err_corr,
+	o_err_detec,
+	o_err_fatal
+
+	);
+
+	//------ INPUT PORTS -----
+	input clk ;
+	input reset_n;
+	input enable;
+	input [0:{Ctopid}] i_code;
+
+
+	//------OUTPUT PORTS -----
+	output [0:{Wtopid}] o_data;
+	output o_valid;
+	output o_err_corr;
+	output o_err_detec;
+	output o_err_fatal;
+
+	//---- INTERNAL VARIABLES ---
+
+	reg [0:{Ctopid}] codereg ;
+	reg o_err_fatal;
+	reg o_err_detec;
+	reg o_err_corr;
+	reg o_valid;
+	wire noerr; 
+	wire [0:{Wtopid}] corr_word; 
+
+
+	wire [0:{Ptopid}] synd ; 
+	wire [0:{Wtopid}] flip ; // databits error mask 
+	reg [0:{Wtopid}] o_data; 
+	wire [0:{Wtopid}] data = codereg[{Nparity}:{Ctopid}] ; //extract databits 
+	
+
+	//---STATEMENTS 
+	 
+
+
+	""".format(Wsize=k,Ctopid=n-1,Wtopid=k-1,Ptopid=r-1, Nparity=r)  
+
+	print >>f, head 
+
+	print >>f, "//----------Syndrome Generation-------------//"
+
+	print >>f, BCHSyndGen(k) 
+
+	print >>f, "//----------Syndrome Decoding----------------//"
+
+	print >>f, BCHSynd2Err(k) 
+
+	tail = """
+
+	
+
+	assign corr_word = data[0:{Wtopid}] ^ flip[0:{Wtopid}]; 
+
+
+	////////// REGISTER INPUT CODEWORD ////////////////
+
+	always @(posedge clk or negedge reset_n) begin
+		if (!reset_n) 
+			// reset
+			codereg <= 0 ;
+		
+		else if (enable)  
+			codereg <= i_code; 
+		 
+	end
+
+	//////////// GET OUTPUT ////////////////////////
+	always @(posedge clk or negedge reset_n) begin
+		if (!reset_n) begin
+			// reset
+			o_data <= 0;
+			o_valid <= 0; 
+			o_err_detec <=0;
+			o_err_corr <= 0;
+			o_err_fatal <= 0;
+		end
+		else if (enable) begin
+
+			o_data <= corr_word ;
+			o_err_detec <= ~noerr ;
+			o_err_corr <= | flip[0:{Wtopid}] ; // found one name match 
+			o_err_fatal <= ~(|flip[0:{Wtopid}]) & ~noerr; // has error AND syndrome has even parity. 2 err or more 
+			o_valid <= 1 ; 
+			
+		end
+	end
+
+
+
+	endmodule 
+	//--------- end of file ------//
+
+
+
+	 """.format(Wtopid=k-1)
+
+	print >>f, tail 
+
+	f.close() 
+
+
 
 
 
@@ -389,6 +531,7 @@ def hamdec_codegen(wdsize):
 
 
 	print >>f, head 
+	# print >>f, ignore(r) 
 
 	print >>f, "//--------- Syndrome Generation -------//"
 
@@ -431,7 +574,7 @@ def hamdec_codegen(wdsize):
 			o_data <= corr_word ;
 			o_err_detec <= ~noerr ;
 			o_err_corr <= | flip[0:{Wtopid}] ; // found one name match 
-			o_err_fatal <= ~synpar & ~noerr; // has error AND syndrome has even parity. 2 err or more 
+			o_err_fatal <= ~synpar & ~noerr ; // has error AND syndrome has even parity. 2 err or more 
 			o_valid <= 1 ; 
 			
 		end
@@ -442,7 +585,7 @@ def hamdec_codegen(wdsize):
 	endmodule 
 	//--------- end of file ------//
 
-	 """.format(Wtopid=wdsize-1, Ptopid=r-1) 
+	 """.format(Wtopid=wdsize-1, Ptopid=r-1) # DOES CONVENTIONAL SECDED NEED IGNORE FLAG?? does even parity syndrome 
 
 	print >>f, tail 
 

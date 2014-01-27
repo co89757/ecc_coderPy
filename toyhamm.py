@@ -7,6 +7,8 @@
 #TODO: larger G/H for wider information word length 
 
 
+# Notations:
+# H: check matrix H = [rxn] = [NameMatrix[rxk]|I] ; 
 
 
 
@@ -15,6 +17,89 @@
 import numpy
 import random
 from itertools import izip 
+
+
+####### NEW: Hsiao optimum odd-column-weight SECDED name matrices table for 16,32,64. ##################
+# NOTE: definiton of name matrix: check matrix H[rxn]=[name_matrix, I] ; name_matrix[rxk]  
+
+HsiaoName16=numpy.array(
+[[1,1,1,1,1,1,0,0,0,0,1,0,0,0,1,0],
+[1,1,1,0,0,0,1,1,1,1,0,0,1,0,0,0],
+[1,0,0,0,1,0,1,1,1,0,0,0,0,1,1,1],
+[0,0,0,0,0,1,1,0,0,1,1,1,0,1,1,1],
+[0,1,0,1,0,0,0,1,0,1,1,1,1,1,0,0],
+[0,0,1,1,1,1,0,0,1,0,0,1,1,0,0,1],
+], dtype=int 
+)
+
+HsiaoName32=numpy.array(
+[[1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,0,0,0,1,1],
+[0,0,0,0,1,0,0,1,1,1,1,1,1,1,1,1,0,0,1,0,0,1,0,0,1,0,0,0,0,1,0,0],
+[0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,1,0,1,1,0],
+[0,0,1,0,0,0,1,0,0,0,1,0,0,1,0,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],
+[0,1,1,0,0,1,0,1,0,1,0,0,1,0,0,1,0,0,0,0,1,1,1,1,0,1,1,0,1,0,0,0],
+[1,0,0,0,0,1,1,0,1,0,0,0,1,1,1,0,1,1,1,1,1,0,0,0,0,0,0,0,1,0,0,0],
+[1,1,0,1,1,0,0,0,1,1,1,1,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,1],
+], dtype=int 
+)
+
+HsiaoName64=numpy.array(
+[[1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0],
+[1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0],
+[0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1],
+[0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0],
+[0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0],
+[1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1],
+[0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,1,0],
+[0,0,1,0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0,0,0,0,1,1,1,1,1,1,1,1]
+], dtype=int 
+)
+
+
+# ------------------- Hsiao Generator matrices and Check matrices -------------------------
+
+hsiao_G16=numpy.concatenate((numpy.eye(16,dtype=int),HsiaoName16.transpose()), axis = 1) 
+hsiao_G32=numpy.concatenate((numpy.eye(32,dtype=int),HsiaoName32.transpose()), axis = 1) 
+hsiao_G64=numpy.concatenate((numpy.eye(64,dtype=int),HsiaoName64.transpose()), axis = 1) 
+
+hsiao_H16=numpy.concatenate(( HsiaoName16, numpy.eye(6, dtype=int)), axis = 1) 
+hsiao_H32=numpy.concatenate(( HsiaoName32, numpy.eye(7, dtype=int)), axis = 1) 
+hsiao_H64=numpy.concatenate(( HsiaoName64, numpy.eye(8, dtype=int)), axis = 1) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+################### END OF HSIAO SEC-DED name matrix table for 16,32,64 ##########################
+
+
+
+
+
+
+
 # import sys
 
 #parity matrix is in G=[I,P] so H=[P',I] 
@@ -35,7 +120,7 @@ p16 = numpy.array(
 [1,1,0,0,0],
 [0,1,1,0,0],
 [0,0,1,1,0]], dtype=int 
-)
+)   # rxk 
 
 
 
@@ -613,7 +698,104 @@ def correct(noisy, i):
     recv[i] = int(not(recv[i]))  # flip the bit at location i
    
     return recv
- 
+
+
+
+
+
+
+def HsiaoSECDED(info_length, erate, maxerr, ITEARTION=5): #PENDING
+     
+    assert info_length in (16,32,64) 
+    hsiao_Gtable={16:hsiao_G16, 32:hsiao_G32, 64:hsiao_G64} 
+    hsiao_Htable={16:hsiao_H16, 32:hsiao_H32, 64:hsiao_H64} 
+    g = hsiao_Gtable[info_length] 
+    h = hsiao_Htable[info_length] 
+    
+    # corr_cnt  = 0
+    # noerr_cnt = 0
+    # fail_cnt  = 0
+    # beyond    = 0
+    tohex= lambda array: hex(int(''.join(map(str,array)),2)) 
+    for i in range(ITEARTION): # n incoming received message repetitions 
+        msg = createMessage(info_length) # generate a random information vector u(x)
+        enc = encode(msg, g) 
+
+        # ------- check parity right after encoder : parity before corruption ----------
+          
+        print "original message hex: ", tohex(msg)   
+        print "encoded msg SECDED hex: ", tohex(enc) 
+
+        # ------introduce corruption --------------
+        noisy    = noise(enc, erate, maxerr)
+
+        
+      
+        print 'received mesage: ', noisy
+        print 'received code HEX: ', tohex(noisy)
+        ep = [x^y for x,y in izip(noisy.tolist(),enc.tolist())] 
+        print 'error pattern: ',  ep 
+        print 'number of errors: ', sum(ep) 
+
+        # -----compute syndrome , set the SEC flag ------------------------------
+        syndromes = syndrome(noisy, h)
+        print 'syndrome vector: ', syndromes
+         # -------- error pattern / error location returned if only 1 error bit, if clean, error_index = -1 ----
+        error_index = findError(syndromes, h) 
+
+        SEC_flag = int(error_index >= 0)  # SEC_flag 1 denotes error alert in SEC part if index = 1000, then beyond t=1 
+
+        if SEC_flag ==0:
+            print 'clean! no err ' 
+
+        elif SEC_flag and error_index != 1000:
+            corrected_vector = correct(noisy, error_index)
+            print 'corrected vector : ', corrected_vector
+            if numpy.array_equal(corrected_vector, enc):
+                print 'correction success!!!' 
+            else:
+                print 'mis-correction..'
+
+        else:
+            print '2 or more err detected!' 
+
+        print '---------------NEXT----------------'
+
+            
+        
+
+   
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def eHamming(info_length, erate, maxerr, ITEARTION=5):
     # g =  numpy.array([[1, 0, 0, 0, 0, 1, 1],[0, 1, 0, 0, 1, 0, 1],[0, 0, 1, 0, 1, 1, 0],[0, 0, 0, 1, 1, 1, 1]])
     # h = numpy.array([[0, 0, 0, 1, 1, 1, 1],[0, 1, 1, 0, 0, 1, 1],[1, 0, 1, 0, 1, 0, 1]]) # colin. remove a extra , comma
@@ -717,7 +899,8 @@ if __name__ == '__main__':
     n_iter = int(raw_input('Repetitions: '))
     ber    = float(raw_input('bit error rate: '))
     nerr   = int(raw_input('maximum number of errors: '))
-    eHamming(length,ber, nerr,n_iter) 
+    # eHamming(length,ber, nerr,n_iter) 
+    HsiaoSECDED(length,ber, nerr,n_iter) 
 
 
 

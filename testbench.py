@@ -35,6 +35,66 @@ def bytearray2vec(a):
 	aa = map(int, ''.join(aa) ) 
 	return aa  
 
+
+
+# ---------- binary file bit-wise compare func ----
+def bindiff(bfile1,bfile2,FileOut=False):
+	""" 
+	compare 2 binary files and show all differing bit locations/indices, one index per line 
+	in: binary file 1, binary file 2 for bit-wise comparison. 
+	out: Optionally store the flipped-bit index [one index location per line] in a output file 'ebitlog'
+
+	"""
+
+	f1 = open(bfile1,'rb')
+	f2 = open(bfile2, 'rb') 
+
+	a1 = bitarray() 
+	a2 = bitarray() 
+
+	a1.fromfile(f1) 
+	a2.fromfile(f2) 
+
+	f1.close()
+	f2.close() 
+
+	assert a1.length() == a2.length() 
+
+	n_bits = a1.length() 
+
+	if FileOut:
+		# if os.path.isfile('mismatch.txt'):
+		# 	os.remove('mismatch.txt')
+		of = open('mismatch.txt','w') 
+	total = 0 # total mismatch count
+	for i in xrange(n_bits):
+		if a1[i] != a2[i]:
+			total += 1 
+			print 'bit mismatch at index: ',i 
+			if FileOut:
+				print >>of, 'bit mismatch at index: ',i
+		else:
+			continue  
+
+	print 'total bit mismatch: ',total
+	if FileOut:
+	  	print >>of, 'total bit mismatch: ',total 
+	  	of.close() 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	
 
 
@@ -116,7 +176,7 @@ def NA_Reader(file, chunksize, next_coroutine):
 	while ptr < ptr_end and ptr + chunksize <= ptr_end: # prevent boundary overflow below 
 		 
 		code_list = map(int, a[ptr:ptr+chunksize].to01() )
-		print 'code chunk: ', code_list #debug  
+		# print 'code chunk: ', code_list #DEBUG   
 		next_coroutine.send(code_list) 
 		ptr += chunksize
 	if ptr < ptr_end: 
@@ -380,7 +440,8 @@ def HamDecoder(wdsize, next_coroutine):
 			print >>f, '# detected corrupted codewords: ', corrupted 
 			print >>f, '# attampted corrected codewords: ', corrected
 			print >>f, '# detected two-error detected/or even number of errors :', twoerr
-			print >>f, '# fatal-error codewords: ',fatal    
+			print >>f, '# fatal-error codewords: ',fatal 
+
 	
 
 
@@ -512,7 +573,7 @@ def main():
 	-h/-b: ECCtype BCH/SECDED(Hamming) set to 'h' [hamming] by default 
 	-w/--wdsize: word width. choose among (16,32,64,128,256) ; set to 16 by default 
 	-e/-d | --enc/--dec : mode select [dec/enc] . 'whole' by default if not specified 
-
+	-c : compare the bit mismatch between initial data file and decoded data file , print to stdout 
 	**WARNING**
 	when -s and -d are both ON, decoder needs both data file (ifile) and parity file (-p:) provided by -p option. SO -p MUST BE ON ALSO!!
 	-----------------------
@@ -537,7 +598,7 @@ def main():
 	# ============PARSE command line arguments ============================
 	try:
 		# opts, remainder = getopt.getopt(sys.argv[1:],"i:o:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) 
-		opts, remainder = getopt.getopt(sys.argv[1:],"i:p:so:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) #NEWLY ADDED
+		opts, remainder = getopt.getopt(sys.argv[1:],"i:p:sco:bhw:edv:",['infile=','outfile=','bch', 'ham','wdsize=','enc','dec']) #NEWLY ADDED
 	except getopt.GetoptError as err:
 		print str(err) 
 		print "provide arguments : -i(--infile) -o(--ofile) -s(separate mode) -p(parity file input) \
@@ -554,6 +615,7 @@ def main():
 	alternate_mode = False 
 	vdd = 0.8 
 	parity_f = 'out_default'
+	compare = False 
 	print opts # debug 
 	for option,arg in opts:
 		if option in ('-i','--infile'):
@@ -576,7 +638,8 @@ def main():
 			alternate_mode = True 
 		elif option in ('-p',):
 			parity_f = arg 
-
+		elif option in ('-c',):
+			compare = True
 
 		else:
 			assert False, 'unhandled option' 
@@ -584,7 +647,10 @@ def main():
 	try:
 
 		if mode == 'whole':
-			Reader(ifile, wdsize, encmap[ecctype](wdsize, ErrorGen(vdd, decmap[ecctype](wdsize,Writer(ofile)) ))) 
+			Reader(ifile, wdsize, encmap[ecctype](wdsize, ErrorGen(vdd, decmap[ecctype](wdsize,Writer(ofile)) )))
+			if compare:
+				bindiff(ifile,ofile,True)
+				# NEWLY ADDED optional a posteri verification  
 		elif mode == 'enc':
 			if alternate_mode: # alternate mode ON 
 				mainENC2(ifile,ofile,ecctype,wdsize)
