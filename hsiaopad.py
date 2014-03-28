@@ -95,6 +95,47 @@ def syndsolve(wdsize):
     return finals   
 
 
+# NEW :OPTIMIZED syndrome decoding. ONLY and the set bits of a syndrome to locate error 
+def syndSolveLazy(wdsize): # PENDING to debug
+    """Lazy syndrome decoding. 
+    only AND set bits in a correctible syndrome pattern to locate error
+    given Parity Matrix P[kxr] a numpy array """
+    # NameMat = wd2N[wdsize]
+    r = int(math.ceil(math.log(wdsize, 2)) ) + 2 
+     
+    P = k2pmap[wdsize] # get the full parity matrix <kxr>   
+    assert P.shape[0]==wdsize and P.shape[1]==r 
+    finals = '' 
+    s1='assign noerr = '
+    for i in xrange(r):
+        ss = '~synd[{0}] & '.format(i) if i !=r-1 else '~synd[{0}];'.format(i) 
+        s1 += ss 
+
+    s1 += '\n' 
+
+    finals += s1 
+
+    # neg = lambda x: '~' if x==0 else '' 
+
+    s2 = ''
+
+    for idx, name in enumerate(P):
+        flip_s = 'assign flip[{0}] = '.format(idx)
+        setbit_ind_array = np.nonzero(name)[0].astype('int')  
+        for i in setbit_ind_array: # set bit index
+            subs = 'synd[{index}] & '.format(index = i) if i != setbit_ind_array[-1] else \
+            'synd[{index}];'.format( index=i) 
+            flip_s += subs 
+        s2 = s2 + flip_s + '\n' 
+
+
+    finals += s2 
+
+    return finals 
+
+
+
+
 
 
 # Hsiao ignore signal generation (if 1 err in parity bits, then ignore) synd[0:r-1] 
@@ -126,7 +167,7 @@ def hsiaoEncGen(wdsize): # PENDING
     "Verilog code Generator for SECDED encoder" 
     r = int(math.ceil(math.log(wdsize, 2)) ) + 2 
     n = r + wdsize # block length 
-    f = open("hsiao_enc{0}.v".format(wdsize),'w') 
+    f = open("hsiao_{0}_enc.v".format(wdsize),'w') 
     header = """ 
     module hsiao_{wdwidth}_enc(
     clk,
@@ -186,6 +227,7 @@ def hsiaoEncGen(wdsize): # PENDING
         end 
         else if (enable) begin 
             o_code <= {datareg,par}; 
+            // appending parity bits 
             o_valid <= 1 ;
         end
       
@@ -209,7 +251,7 @@ def hsiaoEncGen(wdsize): # PENDING
 def HsiaoDecGen(wdsize):
     r = int(math.ceil(math.log(wdsize, 2)) ) + 2  
     n = r + wdsize # block length 
-    f = open("hsiao_dec{0}.v".format(wdsize),'w') 
+    f = open("hsiao_{0}_dec.v".format(wdsize),'w') 
 
     head = """ 
     module hsiao_{Wsize}_dec (
@@ -310,7 +352,7 @@ def HsiaoDecGen(wdsize):
 
             o_data <= corr_word ;
             o_err_detec <= ~noerr ;
-            o_err_corr <= | flip[0:{Wtopid}] ; // found one name match 
+            o_err_corr <= | flip ; // found one name match 
             o_err_fatal <= ~(| flip) & ~noerr & ~ignore; // has error AND no column-match. 2+ errors  
             o_valid <= 1 ; 
             
@@ -329,7 +371,178 @@ def HsiaoDecGen(wdsize):
     f.close() 
 
 
+#### ------ Optimized Hisao Decoder using Lazy Syndrome Decoding ---- 
+
+def Hsiao2DecGen(wdsize):
+    r = int(math.ceil(math.log(wdsize, 2)) ) + 2  
+    n = r + wdsize # block length 
+    f = open("hsiao2_{0}_dec.v".format(wdsize),'w') 
+
+    head = """ 
+    module hsiao2_{Wsize}_dec (
+    clk,
+    reset_n,
+    enable,
+    i_code,
+    o_data,
+    o_valid,
+    o_err_corr,
+    o_err_detec,
+    o_err_fatal
+
+    ); 
+
+    //------ INPUT PORTS -----
+    input clk ;
+    input reset_n;
+    input enable;
+    input [0:{Ctopid}] i_code;
+
+
+    //------OUTPUT PORTS -----
+    output [0:{Wtopid}] o_data;
+    output o_valid;
+    output o_err_corr;
+    output o_err_detec;
+    output o_err_fatal;
+
+    //---- INTERNAL VARIABLES ---
+
+    reg [0:{Ctopid}] codereg ;
+    reg o_err_fatal;
+    reg o_err_detec;
+    reg o_err_corr;
+    reg o_valid;
+    wire noerr; 
+    
+    wire [0:{Wtopid}] corr_word; 
+
+
+    wire [0:{Ptopid}] synd ; 
+    wire [0:{Wtopid}] flip ; // databits error mask 
+    reg [0:{Wtopid}] o_data; 
+    wire[0:{Ptopid}] chk = codereg[{Pstartid}:{Pstopid}]; //extract the checkbits 
+
+    wire [0:{Wtopid}] data = codereg[0:{Wtopid}] ; //extract databits
+
+    wire correctible = ^synd & ~noerr; // correctible (1err) 
+    wire fall_thru = noerr | ~correctible; // fall-through when fatal or clean 
+    reg [0:{Wtopid}] sel_dout; //selected data output, either corrected data or fall through bits 
+
+    //---STATEMENTS 
+     
+    
+
+    """.format(Wsize=wdsize, Ctopid=n-1, Wtopid=wdsize-1, Ptopid=r-1, Pstartid=wdsize, Pstopid=n-1) 
+
+
+
+
+    print >>f, head 
+
+    print >>f, "//--------- Syndrome Generation -------//"
+
+    print >>f, syndgen(wdsize) 
+
+    print >>f, "//--------- Syndrome Decoding ----------//"
+
+    print >>f, syndSolveLazy(wdsize) ## using lazy syndrome decoding 
+
+    tail = """
+    
+
+    assign corr_word = data ^ flip ; 
+
+
+    ////////// REGISTER INPUT CODEWORD ////////////////
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) 
+            // reset
+            codereg <= 0 ;
+        
+        else if (enable)  
+            codereg <= i_code; 
+         
+    end
+
+    ////////// MUX OUTPUT THAT FEEDS THE OUTPUT REGISTER //////////
+    always @(corr_word or data or fall_thru) begin 
+
+        case (fall_thru)
+            1'b1: sel_dout = data ; 
+            1'b0: sel_dout = corr_word ; 
+        endcase 
+    end 
+
+
+
+
+    //////////// GET OUTPUT ////////////////////////
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            // reset
+            o_data <= 0;
+            o_valid <= 0; 
+            o_err_detec <=0;
+            o_err_corr <= 0;
+            o_err_fatal <= 0;
+        end
+        else if (enable) begin
+
+            o_data <= corr_word ;
+            o_err_detec <= ~noerr ;
+            o_err_corr <= | flip ; // found one name match 
+            o_err_fatal <= ~correctible ; // has error AND no column-match. 2+ errors  
+            o_valid <= 1 ; 
+            
+        end
+    end
+
+
+
+    endmodule 
+    //--------- end of file ------//
+
+     """.format(Wtopid=wdsize-1, Ptopid=r-1) 
+
+    print >>f, tail 
+
+    f.close() 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def main(k):
     "generate both enc/dec file , a wrapper routine"
+
     hsiaoEncGen(k)
     HsiaoDecGen(k)

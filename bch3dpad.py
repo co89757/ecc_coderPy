@@ -6,6 +6,7 @@
 # 	-> Code (c0,c1,c2,...c_n-1) = c0 + c1x + c2x^2 + ... 
 # 	-> based on DEC BCH. but add additional all-0 column and all-1 row to H matrix to make a new extended H matrix
 # 	-> The bulk of the code is based on bch2 code Generator 
+#   -> encoded word should be like (p1,p2,...p_r-1, overall_p, c0,c1,..c32) 
 
 
 
@@ -117,7 +118,7 @@ def BCH3dSynd2Err(k):
 
 # IGNORE errors in parity =============
 
-def BCHignoreFlag(k):
+def BCH3dignoreFlag(k):
 	"generate ignore flag as ignore = ... (pattern list)" 
 	m = int(math.ceil(math.log(k, 2)) ) + 1 # GF(2^m) 
 	r = 2*m + 1 # number of checkbits for DECTED 
@@ -306,7 +307,7 @@ def BCH3dDecoderGen(k):
 	print >>f, "//----------Syndrome Decoding----------------//"
 
 	print >>f, BCH3dSynd2Err(k) 
-	print >>f, BCHignoreFlag(k) # NEW: add IGNORE flag to ignore error-in-parity 
+	print >>f, BCH3dignoreFlag(k) # NEW: add IGNORE flag to ignore error-in-parity 
 
 	tail = """
 
