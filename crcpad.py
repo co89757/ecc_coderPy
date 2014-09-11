@@ -261,5 +261,9 @@ def main(r,k):
 
 
 if __name__ == '__main__':
-	r = 7 ; k = 32 
+	# r = 7 ; k = 32 
+	# main(r,k)
+	r=8; k = 64 
 	main(r,k)
+	r2=9; k2=128 
+	main(r2,k2) 

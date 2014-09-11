@@ -3,7 +3,7 @@
 # Date created: Nov 26 2013 Encoder testbench . write to a file_out (binary) 
 # My idea: write a generator/coroutine to achieve enc/dec pipeline for input binary data stream
 # EN/DECODER **APPEND** parity bits in all ECCs used here  
-
+# pre-requisite lib: bitarray, numpy 
 import os,sys
 
 p=os.getcwd() ; sys.path.append(p) 

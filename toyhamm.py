@@ -17,7 +17,7 @@
 import numpy
 import random
 from itertools import izip 
-
+import math 
 
 ####### NEW: Hsiao optimum odd-column-weight SECDED name matrices table for 16,32,64. ##################
 # NOTE: definiton of name matrix: check matrix H[rxn]=[name_matrix, I] ; name_matrix[rxk]  
@@ -700,6 +700,44 @@ def correct(noisy, i):
     return recv
 
 
+##### SECDED for detection only NEW ON FEB 13 
+
+def hsiaoDet(k,code):
+    "SECDED HSIAO for error detection only based on syndrome. compare to CRC"
+    hsiao_Htable={16:hsiao_H16, 32:hsiao_H32, 64:hsiao_H64}  
+
+    h = hsiao_Htable[k] 
+
+    synd = syndrome(code, h) 
+
+    errdet = any(synd) 
+
+    return errdet 
+
+
+
+
+
+#### verify the Hsiao Decoder Robustness by exhausting SEC patterns 
+
+def verifyHsiaoDec(k):
+
+    assert k in (16,32,64)
+    r = int(math.ceil(math.log(k, 2)) ) + 2 ; 
+    n = k+r 
+    Hmap = {16:hsiao_H16, 32:hsiao_H32, 64:hsiao_H64} 
+    H = Hmap[k] 
+
+    for i in xrange(k):  ## error in databits 
+        e1 = np.zeros(n,dtype=int) 
+        e1[i]=1 
+
+
+
+
+
+
+
 
 
 
@@ -712,10 +750,10 @@ def HsiaoSECDED(info_length, erate, maxerr, ITEARTION=5): #PENDING
     g = hsiao_Gtable[info_length] 
     h = hsiao_Htable[info_length] 
     
-    # corr_cnt  = 0
-    # noerr_cnt = 0
-    # fail_cnt  = 0
-    # beyond    = 0
+    corr_cnt  = 0
+    noerr_cnt = 0
+    miss_cnt  = 0
+    beyond    = 0
     tohex= lambda array: hex(int(''.join(map(str,array)),2)) 
     for i in range(ITEARTION): # n incoming received message repetitions 
         msg = createMessage(info_length) # generate a random information vector u(x)
@@ -739,7 +777,7 @@ def HsiaoSECDED(info_length, erate, maxerr, ITEARTION=5): #PENDING
 
         # -----compute syndrome , set the SEC flag ------------------------------
         syndromes = syndrome(noisy, h)
-        print 'syndrome vector: ', syndromes
+        print 'syndrome vector: ', syndromes # DEBUG 
          # -------- error pattern / error location returned if only 1 error bit, if clean, error_index = -1 ----
         error_index = findError(syndromes, h) 
 
@@ -747,23 +785,32 @@ def HsiaoSECDED(info_length, erate, maxerr, ITEARTION=5): #PENDING
 
         if SEC_flag ==0:
             print 'clean! no err ' 
+            noerr_cnt += 1 
 
         elif SEC_flag and error_index != 1000:
             corrected_vector = correct(noisy, error_index)
             print 'corrected vector : ', corrected_vector
             if numpy.array_equal(corrected_vector, enc):
                 print 'correction success!!!' 
+                corr_cnt += 1 
             else:
                 print 'mis-correction..'
+                miss_cnt += 1 
 
         else:
-            print '2 or more err detected!' 
+            print '2 or more err detected!'
+            beyond += 1  
 
-        print '---------------NEXT----------------'
+        # print '---------------NEXT----------------'
+
+    print "corr_cnt = ", corr_cnt
+    print "noerr_cnt = ", noerr_cnt
+    print "miss_cnt = ", miss_cnt 
+    print "2+ error cnt = ",beyond
+    print "total cnt = ", corr_cnt+noerr_cnt+miss_cnt+beyond
 
             
         
-
    
 
     

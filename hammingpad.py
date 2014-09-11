@@ -297,7 +297,7 @@ def HamDecoderGen(wdsize):
 	tail = """
 	assign synpar = ^synd[0:{Ptopid}];  // syndrome's parity 
 
-	assign corr_word = data[0:{Wtopid}] ^ flip[0:{Wtopid}]; 
+	assign corr_word = data  ^ flip ; 
 
 
 	////////// REGISTER INPUT CODEWORD ////////////////
@@ -326,7 +326,7 @@ def HamDecoderGen(wdsize):
 
 			o_data <= corr_word ;
 			o_err_detec <= ~noerr ;
-			o_err_corr <= | flip[0:{Wtopid}] ; // found one name match 
+			o_err_corr <= | flip ; // found one name match 
 			o_err_fatal <= ~synpar & ~noerr ; // has error AND syndrome has even parity. 2 err or more 
 			o_valid <= 1 ; 
 			

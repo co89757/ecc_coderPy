@@ -5,7 +5,7 @@
 # all code vectors are interchangeably used with descending polynomial vector repr and number[bin/deci]. Two reprs: vector and number
 # all polynomials are represented in descending order.  
 # minimal polynomial table . Dependent on gfield.py module 
-p='D:\\Dropbox\\Thesis at imec\\opendo\\colinecc';import sys;sys.path.append(p) 
+import os,sys;p=os.getcwd(); sys.path.append(p) 
 
 from gfield import * 
 import random 

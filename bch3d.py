@@ -13,7 +13,8 @@ from gfield import *
 from itertools import combinations, izip 
 import numpy as np 
 import math 
-from bch import minpol, CreateMessage , noise  
+from bch import minpol, CreateMessage , noise
+import copy   
 
 # -------/ Helper functions /------------
 
@@ -31,7 +32,50 @@ def bin2code(number,width=None):
 
 wd2mTable = {8:4, 16:5, 32:6, 64:7, 128:8, 256:9} 
 
+def hex2list(hex,n):
+	"convert a hex number to 011001 form (a binary list of length n)"
 
+	binx = bin(hex) 
+	binx = binx[2:] ## a string ,like '1001101' 
+	assert len(binx) <= n 
+
+	binx = binx.zfill(n) 
+
+	outlist = map(int, binx) 
+	return outlist 
+
+### turn a list to hex form 
+
+list2hex = lambda v:hex(int(''.join(map(str,v)),2))   
+
+
+def bch3dEncTest(ifile,k,ofile=None):
+	"given a inlist of hex form data, puts encoded words "
+
+	if ofile:
+		of = open(ofile,'w')
+		with open(ifile,'r') as inf:
+			for data_str in inf:
+				data_ls = hex2list(int(data_str, 16 ) ,k)
+				o_code = encoder(data_ls,k)
+				hex_code = list2hex(o_code)
+				# print 'encoded: ', hex_code 
+				print >>of, hex_code 
+		of.close()
+	else:
+		print "-----codewords--------"
+		for data in inlist:
+			data_ls = hex2list(data,k)
+			o_code = encoder(data_ls,k)
+			hex_code = list2hex(o_code)
+			print  hex_code
+
+
+
+
+
+
+### -------------------------- END OF HELPERS -------------------- 
 
 def genMatrix(k):
 	"return generator matrix of BCH_3D(k,t=2) code. k : word width; return a numpy array G " 
@@ -78,7 +122,7 @@ def encoder(data,k,parityonly=False):
 
 # ============== DECODER ============== 
 
-def checkMatrix(k, transpose=False): #BUGGY
+def checkMatrix(k, transpose=False):  
 	"""return H matrix of BCH_3D code for k wordsize. 
 	ref: Jorge P131/102 H[rxn] = [1 alpha alpha^2 .... alpha^n-1 ; 1 alpha^3 ...]
 	to add TED , H is expanded by a inserting a all-0 column at the r-th col. and then an all-1 row at the bottom. 
@@ -96,7 +140,7 @@ def checkMatrix(k, transpose=False): #BUGGY
  	HT_array = np.array(h,dtype=int) # old HT 
 
  	H_array = np.transpose( HT_array) 
- 	H_array = np.insert(H_array, 2*m, 0, axis=1 ) # add all-0 column to right-end BUGGY, not to the right end
+ 	H_array = np.insert(H_array, 2*m, 0, axis=1 ) # add all-0 column to r-th col 
 
  	H_array_new = np.vstack((H_array, np.ones(n+1,dtype=int)) ) # add all-1 row to bottom, thus new H matrix 
  	HT_array_new = H_array_new.transpose() # new HT
@@ -314,7 +358,35 @@ def BCH3dignore(k):
 
 
 
-# ================================ TESTING MODULE ===============		 
+# ================================ TESTING MODULE =========================
+
+
+def testDecoder(k,n,nerr):
+	"exhaustive testing for #err = nerr for BCH3D(n,k)" 
+
+	### TED test 
+	e = [0]*n 
+	for i,j,k in combinations(xrange(n),3):
+		etest = copy.copy(e) 
+		etest[i]=etest[j] = etest[k] = 1 
+		_ , status = decoder(etest, k) 
+		if status != 2:
+			print "3D failure!! " 
+	print '==DONE==' 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
 	datasize = int(raw_input('data word size = ')) 
 	errate = float(raw_input('bit error rate = ')) 

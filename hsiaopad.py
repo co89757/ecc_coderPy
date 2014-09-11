@@ -5,13 +5,14 @@ import sys,os
 p=os.getcwd() ; sys.path.append(p) 
 
 from toyhamm import HsiaoName16,HsiaoName32,HsiaoName64 
+from hammingpad import P128 
 import math 
 import numpy as np 
 # ------------------------------------------------------------------------
 # ----------------------- Modular Helper Functions ------------------------
 # -------------------------------------------------------------------------
 
-wd2N = {16:HsiaoName16, 32:HsiaoName32, 64:HsiaoName64} # wordsize to name matrix table 
+wd2N = {16:HsiaoName16, 32:HsiaoName32, 64:HsiaoName64, 128:P128.transpose()} # wordsize to name matrix table 
 
 # Parity bits generation for Hsiao 
 def paritygen(wdsize):
@@ -55,8 +56,8 @@ def syndgen(wdsize):
     return result_s #string return 
 
 
-#wordsize to parity matrix[kxr] mapping 
-k2pmap= {16:HsiaoName16.transpose(), 32:HsiaoName32.transpose(), 64:HsiaoName64.transpose()} 
+#wordsize to parity matrix[kxr] mapping , use SECDED normal for k > 64 
+k2pmap= {16:HsiaoName16.transpose(), 32:HsiaoName32.transpose(), 64:HsiaoName64.transpose(), 128:P128} 
 
 
 # -----------------------------------------------------
@@ -504,7 +505,7 @@ def Hsiao2DecGen(wdsize):
     endmodule 
     //--------- end of file ------//
 
-     """.format(Wtopid=wdsize-1, Ptopid=r-1) 
+    """
 
     print >>f, tail 
 
